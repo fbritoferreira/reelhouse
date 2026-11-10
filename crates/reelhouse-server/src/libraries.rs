@@ -94,9 +94,12 @@ pub async fn scan(
         }
     });
     let images = config.tmdb_image_base.is_some();
-    Ok(Json(
-        scan_library(&state.db, &lib, tmdb.as_ref(), images).await?,
-    ))
+    // A detached task: if the browser leaves the page, the request is dropped but the scan finishes.
+    let db = state.db.clone();
+    let report = tokio::spawn(async move { scan_library(&db, &lib, tmdb.as_ref(), images).await })
+        .await
+        .map_err(|e| anyhow::anyhow!("scan task failed: {e}"))??;
+    Ok(Json(report))
 }
 
 #[derive(FromRow)]
