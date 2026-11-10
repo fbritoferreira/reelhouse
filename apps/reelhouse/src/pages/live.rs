@@ -644,8 +644,12 @@ fn OnAir(entry: GuideChannel, time: Clock) -> Element {
                     }
                     span { "{c.name}" }
                 }
-                match current {
-                    Some(p) => rsx! {
+                match (c.refused.clone(), current) {
+                    (Some(why), _) => rsx! {
+                        p { class: "on-air-now", "Unavailable from your provider" }
+                        p { class: "quiet on-air-desc", "The last try said {why}. Select it to try again." }
+                    },
+                    (None, Some(p)) => rsx! {
                         p { class: "on-air-now",
                             span { class: "lamp", "aria-label": "On now" }
                             "{p.title}"
@@ -660,7 +664,7 @@ fn OnAir(entry: GuideChannel, time: Clock) -> Element {
                             p { class: "on-air-desc", "{d}" }
                         }
                     },
-                    None => rsx! {
+                    (None, None) => rsx! {
                         p { class: "on-air-now",
                             span { class: "lamp", "aria-label": "Live" }
                             "Live now"
