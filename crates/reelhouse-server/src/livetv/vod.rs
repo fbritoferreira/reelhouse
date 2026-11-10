@@ -387,3 +387,54 @@ pub async fn search(
             .collect(),
     }))
 }
+
+/// How to fetch a copy of an on-demand title to keep: the provider's file through the server
+/// when the client plays it as is, otherwise an MP4 made for it.
+pub async fn offline(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(caps): Json<Capabilities>,
+) -> ApiResult<Json<reelhouse_api::OfflineSource>> {
+    let (url,): (String,) = sqlx::query_as("SELECT stream_url FROM vod_items WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    let info = crate::scan::probe::probe(std::path::Path::new(&url))
+        .await
+        .map_err(|e| ApiError::BadGateway(format!("the title would not open: {e:#}")))?;
+    Ok(Json(match decide(&info, &caps) {
+        PlaybackMethod::Direct => reelhouse_api::OfflineSource {
+            url: format!("/api/v1/vod/{id}/file"),
+            resumable: true,
+        },
+        method => reelhouse_api::OfflineSource {
+            url: format!(
+                "/api/v1/vod/{id}/mp4?transcode={}&height={}",
+                u8::from(method == PlaybackMethod::Transcode),
+                caps.max_height
+            ),
+            resumable: false,
+        },
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct Mp4Query {
+    #[serde(default)]
+    transcode: u8,
+    height: Option<u32>,
+}
+
+pub async fn mp4(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+    Query(q): Query<Mp4Query>,
+) -> ApiResult<axum::response::Response> {
+    let (url,): (String,) = sqlx::query_as("SELECT stream_url FROM vod_items WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    crate::stream::routes::mp4_response(&url, q.transcode == 1, q.height.unwrap_or(2160))
+}

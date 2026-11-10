@@ -1,11 +1,11 @@
 //! Download controls. One mark everywhere: a reel ring that winds up in marquee amber as the
-//! download progresses, and fills solid once the item is on this TV. Web builds render nothing.
+//! download progresses, and fills solid once the item is kept on the device. The browser keeps
+//! its copies in its own storage (see downloads_web.rs).
 
 use dioxus::prelude::*;
 use reelhouse_api::Item;
 
 /// What the ring shows.
-#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Copy, PartialEq)]
 pub enum Reel {
     Idle,
@@ -17,7 +17,6 @@ pub enum Reel {
     Failed,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 #[component]
 pub fn Ring(reel: Reel) -> Element {
     let pct = match reel {
@@ -56,7 +55,6 @@ pub fn Ring(reel: Reel) -> Element {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 mod native {
     use std::time::Duration;
 
@@ -103,7 +101,7 @@ mod native {
             State::Paused { fraction } => {
                 format!("Paused at {}%, resume", (fraction * 100.0).round())
             }
-            State::Done => "On this TV".to_string(),
+            State::Done => "Downloaded".to_string(),
             State::Failed(_) => "Download stopped, try again".to_string(),
         };
         let item_for_start = item.clone();
@@ -140,7 +138,7 @@ mod native {
         let s = state();
         let name = crate::widgets::episode_name(&ep);
         let label = match &s {
-            State::Done => format!("Remove {name} from this TV"),
+            State::Done => format!("Remove the download of {name}"),
             State::Running { .. } | State::Queued => format!("{name} is downloading"),
             _ => format!("Download {name}"),
         };
@@ -214,7 +212,7 @@ mod native {
             format!("{total} episodes")
         };
         let (reel, label) = if done == total {
-            (Reel::Full, format!("{} on this TV", capitalise(&what)))
+            (Reel::Full, format!("{} downloaded", capitalise(&what)))
         } else if busy {
             (
                 Reel::Winding(done as f64 / total as f64),
@@ -247,31 +245,4 @@ mod native {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub use native::{CollectionDownload, DownloadButton, EpisodeDownload, reel_of};
-
-#[cfg(target_arch = "wasm32")]
-mod web {
-    use super::*;
-
-    #[component]
-    pub fn DownloadButton(item: Item) -> Element {
-        let _ = item;
-        rsx! {}
-    }
-
-    #[component]
-    pub fn EpisodeDownload(ep: Item) -> Element {
-        let _ = ep;
-        rsx! {}
-    }
-
-    #[component]
-    pub fn CollectionDownload(scope: Item) -> Element {
-        let _ = scope;
-        rsx! {}
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-pub use web::{CollectionDownload, DownloadButton, EpisodeDownload};

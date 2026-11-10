@@ -308,3 +308,42 @@ async fn every_soundtrack_reaches_hls() {
     assert_eq!(master.matches("TYPE=AUDIO").count(), 2, "{master}");
     assert!(master.contains("LANGUAGE=\"spa\""), "{master}");
 }
+
+#[tokio::test]
+async fn offline_copies_come_as_files_or_mp4() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(60)).await;
+    // An mkv: a browser that plays only mp4 gets a remuxed mp4 stream.
+    let mp4_only = json!({"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "max_height": 1080});
+    let (status, plan) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/items/{id}/offline"),
+        Some(&token),
+        Some(mp4_only),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    assert_eq!(plan["resumable"], false);
+    let url = plan["url"].as_str().unwrap().to_string();
+    assert!(url.contains("/mp4"), "{url}");
+    let sep = if url.contains('?') { '&' } else { '?' };
+    let (status, _, body) = get(&app, &format!("{url}{sep}token={token}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(&body[4..8], b"ftyp", "an mp4 starts with its ftyp box");
+
+    // One that plays mkv gets the file itself, resumable.
+    let mkv = json!({"containers": ["mkv"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "max_height": 1080});
+    let (_, plan) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/items/{id}/offline"),
+        Some(&token),
+        Some(mkv),
+    )
+    .await;
+    assert_eq!(plan["resumable"], true);
+    assert_eq!(plan["url"], format!("/api/v1/items/{id}/file"));
+}

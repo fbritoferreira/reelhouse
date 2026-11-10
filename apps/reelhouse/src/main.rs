@@ -5,6 +5,9 @@ mod art;
 mod download_ui;
 #[cfg(not(target_arch = "wasm32"))]
 mod downloads;
+#[cfg(target_arch = "wasm32")]
+#[path = "downloads_web.rs"]
+mod downloads;
 mod live_cache;
 mod pages;
 mod player;
@@ -166,7 +169,6 @@ fn Shell() -> Element {
             }
         }
     });
-    #[cfg(not(target_arch = "wasm32"))]
     use_hook(|| {
         // Not session::client(): that reads context, a hook, which cannot run inside this one.
         let client = session.peek().client.clone();
@@ -205,9 +207,7 @@ fn Shell() -> Element {
                     }
                 }
                 Link { class: here(Route::LiveTv {}), to: Route::LiveTv {}, "Live TV" }
-                if cfg!(not(target_arch = "wasm32")) {
-                    Link { class: here(Route::Downloads {}), to: Route::Downloads {}, "Downloads" }
-                }
+                Link { class: here(Route::Downloads {}), to: Route::Downloads {}, "Downloads" }
             }
             if let Some(u) = user.clone() {
                 Profile { name: u.name.clone(), is_admin: u.is_admin }

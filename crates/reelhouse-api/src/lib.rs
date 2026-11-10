@@ -141,6 +141,14 @@ pub enum TvSourceKind {
     Xtream,
 }
 
+/// Where to fetch a copy to keep offline: the original file when the client plays it as is
+/// (`resumable`, ranges allowed), else an MP4 remuxed as it streams (restart if interrupted).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct OfflineSource {
+    pub url: String,
+    pub resumable: bool,
+}
+
 /// An IPTV source. The password is write-only.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TvSource {
