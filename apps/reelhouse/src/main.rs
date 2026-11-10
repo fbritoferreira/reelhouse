@@ -68,6 +68,13 @@ fn App() -> Element {
     }
 }
 
+/// Keyed by route, so a page whose id changes (one library to another) mounts afresh; otherwise
+/// the router reuses it and its hooks keep loading the old id.
+#[component]
+fn CurrentPage() -> Element {
+    rsx! { Outlet::<Route> {} }
+}
+
 /// Signed-in chrome: top bar and the page.
 #[component]
 fn Shell() -> Element {
@@ -158,6 +165,11 @@ fn Shell() -> Element {
                 }
             }
         }
-        main { Outlet::<Route> {} }
+        main {
+            // A one-item keyed list: keys only remount among list siblings.
+            for r in [route.to_string()] {
+                CurrentPage { key: "{r}" }
+            }
+        }
     }
 }
