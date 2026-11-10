@@ -270,6 +270,36 @@ pub fn stereo_capabilities() -> Capabilities {
     }
 }
 
+/// Fills the screen with the player (video and controls), or leaves full screen. Web only; the
+/// TV is full screen already.
+pub fn toggle_fullscreen() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let js = format!(
+            "(() => {{ if (document.fullscreenElement) {{ document.exitFullscreen(); return; }} \
+             const v = document.getElementById({:?}); if (!v) return; const el = v.parentElement; \
+             if (el.requestFullscreen) el.requestFullscreen(); \
+             else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); }})()",
+            imp::VIDEO_ID
+        );
+        let _ = js_sys::eval(&js);
+    }
+}
+
+pub fn is_fullscreen() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.fullscreen_element())
+            .is_some()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
 /// The element the video draws into.
 pub fn surface() -> Element {
     #[cfg(target_arch = "wasm32")]
