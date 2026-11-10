@@ -210,6 +210,33 @@ async fn dvr_records_into_the_recordings_library_and_keeps_last() {
         .unwrap()
         .collect();
     assert_eq!(files.len(), 1);
+
+    // Deleting a finished recording removes its file and library item; the record stays, so the
+    // series rule does not record that episode again.
+    let (status, _) = call(
+        &app,
+        "DELETE",
+        &format!("/api/v1/livetv/recordings/{}", recs[1]["id"]),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let recs = recordings(&app, &admin).await;
+    assert_eq!(recs[1]["item_id"], Value::Null);
+    let files: Vec<_> = std::fs::read_dir(data.join("recordings").join("Show"))
+        .unwrap()
+        .collect();
+    assert_eq!(files.len(), 0);
+    let (status, _) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/items/{item}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

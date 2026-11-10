@@ -545,3 +545,37 @@ pub async fn recordings(
             .collect(),
     ))
 }
+
+/// Deletes a finished recording's file and its library item. The record stays, so a series rule
+/// does not record the same episode again.
+pub async fn delete_recording(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    let found: Option<(Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT r.file_path, r.item_id FROM recordings r JOIN recording_rules u ON u.id = r.rule_id \
+         WHERE r.id = ? AND u.user_id = ?",
+    )
+    .bind(id)
+    .bind(user.id)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((file, item)) = found else {
+        return Err(ApiError::NotFound);
+    };
+    if let Some(file) = file {
+        let _ = tokio::fs::remove_file(&file).await;
+    }
+    if let Some(item) = item {
+        sqlx::query("DELETE FROM items WHERE id = ?")
+            .bind(item)
+            .execute(&state.db)
+            .await?;
+    }
+    sqlx::query("UPDATE recordings SET file_path = NULL, item_id = NULL WHERE id = ?")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}

@@ -187,33 +187,63 @@ const GRID_KEY: &str = "reelhouse.live.view";
 static GRID: GlobalSignal<bool> =
     Signal::global(|| crate::session::load(GRID_KEY).as_deref() == Some("guide"));
 
-/// Whether Live TV shows channels or what its sources offer on demand; remembered on the device.
-static ON_DEMAND: GlobalSignal<bool> =
-    Signal::global(|| crate::session::load(MODE_KEY).as_deref() == Some("vod"));
+/// What the Live TV page shows: channels, what the sources offer on demand, or your recordings.
+/// Remembered on the device.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Mode {
+    Live,
+    OnDemand,
+    Recorded,
+}
 
-/// Live or On demand, at the head of the groups column.
+impl Mode {
+    const ALL: [Mode; 3] = [Mode::Live, Mode::OnDemand, Mode::Recorded];
+
+    fn id(self) -> &'static str {
+        match self {
+            Mode::Live => "live",
+            Mode::OnDemand => "vod",
+            Mode::Recorded => "recorded",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Mode::Live => "Live",
+            Mode::OnDemand => "On demand",
+            Mode::Recorded => "Recorded",
+        }
+    }
+}
+
+static MODE: GlobalSignal<Mode> = Signal::global(|| {
+    let saved = crate::session::load(MODE_KEY);
+    Mode::ALL
+        .into_iter()
+        .find(|m| Some(m.id()) == saved.as_deref())
+        .unwrap_or(Mode::Live)
+});
+
+/// Live, On demand or Recorded, at the head of the column.
 #[component]
-pub(crate) fn ModeToggle(on_demand: bool) -> Element {
-    let set = |vod: bool| {
-        *ON_DEMAND.write() = vod;
-        crate::session::save(MODE_KEY, Some(if vod { "vod" } else { "live" }));
-    };
+pub(crate) fn ModeToggle(current: Mode) -> Element {
     rsx! {
-        div { class: "mode-toggle", role: "radiogroup", "aria-label": "Live or on demand",
-            button {
-                role: "radio",
-                class: if on_demand { "mode-option" } else { "mode-option current" },
-                "aria-checked": !on_demand,
-                onclick: move |_| set(false),
-                span { class: "lamp", "aria-hidden": "true" }
-                "Live"
-            }
-            button {
-                role: "radio",
-                class: if on_demand { "mode-option current" } else { "mode-option" },
-                "aria-checked": on_demand,
-                onclick: move |_| set(true),
-                "On demand"
+        div { class: "mode-toggle", role: "radiogroup", "aria-label": "What to show",
+            for m in Mode::ALL {
+                button {
+                    key: "{m.id()}",
+                    role: "radio",
+                    class: if m == current { "mode-option current" } else { "mode-option" },
+                    "aria-checked": m == current,
+                    onclick: move |_| {
+                        *MODE.write() = m;
+                        crate::session::save(MODE_KEY, Some(m.id()));
+                    },
+                    if m == Mode::Live {
+                        span { class: "lamp", "aria-hidden": "true" }
+                    }
+                    "{m.label()}"
+                }
             }
         }
     }
@@ -225,10 +255,11 @@ fn group_label(name: &Option<String>) -> String {
 
 #[component]
 pub fn LiveTv() -> Element {
-    if ON_DEMAND() {
-        return rsx! { super::vod::VodBrowser {} };
+    match MODE() {
+        Mode::OnDemand => rsx! { super::vod::VodBrowser {} },
+        Mode::Recorded => rsx! { super::recordings::Recordings {} },
+        Mode::Live => rsx! { LiveChannels {} },
     }
-    rsx! { LiveChannels {} }
 }
 
 #[component]
@@ -305,7 +336,7 @@ fn LiveChannels() -> Element {
         div { class: "page page-top live",
             div { class: "live-body",
                 aside { class: "live-groups",
-                    ModeToggle { on_demand: false }
+                    ModeToggle { current: Mode::Live }
                     div { class: "live-sort", role: "radiogroup", "aria-label": "Sort groups",
                         for by in GroupSort::ALL {
                             button {
@@ -466,7 +497,7 @@ fn LiveSkeleton() -> Element {
         div { class: "page page-top live", "aria-busy": "true",
             div { class: "live-body",
                 aside { class: "live-groups",
-                    ModeToggle { on_demand: false }
+                    ModeToggle { current: Mode::Live }
                     for i in 0..9 {
                         span { key: "{i}", class: "skeleton skeleton-line" }
                     }

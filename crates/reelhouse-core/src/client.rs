@@ -328,6 +328,15 @@ impl Client {
         .await
     }
 
+    /// Deletes a finished recording's file.
+    pub async fn delete_recording(&self, id: i64) -> Result<(), ClientError> {
+        self.send_empty(self.req(
+            reqwest::Method::DELETE,
+            &format!("/api/v1/livetv/recordings/{id}"),
+        ))
+        .await
+    }
+
     /// Recordings scheduled, under way and done.
     pub async fn recordings(&self) -> Result<Vec<Recording>, ClientError> {
         self.get("/api/v1/livetv/recordings").await
