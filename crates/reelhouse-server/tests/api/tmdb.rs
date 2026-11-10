@@ -1,13 +1,13 @@
 use reelhouse_server::metadata::tmdb::Tmdb;
 use serde_json::json;
 use url::Url;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn tmdb() -> (MockServer, Tmdb) {
     let server = MockServer::start().await;
     let base = Url::parse(&format!("{}/", server.uri())).unwrap();
-    (server, Tmdb::new(base, "k".into()))
+    (server, Tmdb::new(base, Some("k".into())))
 }
 
 #[tokio::test]
@@ -65,4 +65,17 @@ async fn episode_fills_overview() {
     let meta = tmdb.episode(136315, 2, 7).await.unwrap().unwrap();
     assert_eq!(meta.title.as_deref(), Some("Forks"));
     assert_eq!(meta.overview.as_deref(), Some("Richie trains."));
+}
+
+#[tokio::test]
+async fn proxy_mode_sends_no_api_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/3/search/tv"))
+        .and(query_param_is_missing("api_key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": []})))
+        .mount(&server)
+        .await;
+    let tmdb = Tmdb::new(Url::parse(&format!("{}/", server.uri())).unwrap(), None);
+    assert_eq!(tmdb.show("The Bear").await.unwrap(), None);
 }

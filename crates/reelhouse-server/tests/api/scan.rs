@@ -232,7 +232,7 @@ async fn scan_fills_tmdb_metadata() {
     make_video(&dir.path().join("Heat (1995).mp4"));
     let mut config = reelhouse_server::config::Config::for_tests(std::env::temp_dir());
     config.tmdb_api_key = Some("k".into());
-    config.tmdb_base = format!("{}/", server.uri()).parse().unwrap();
+    config.tmdb_base = Some(format!("{}/", server.uri()).parse().unwrap());
     let app = super::common::app_with(config).await;
     let token = admin_token(&app).await;
     let lib = library(&app, &token, "movies", dir.path()).await;

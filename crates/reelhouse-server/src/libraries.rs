@@ -87,9 +87,9 @@ pub async fn scan(
     let lib = get_library(&state, id).await?;
     let tmdb = state
         .config
-        .tmdb_api_key
+        .tmdb_base
         .clone()
-        .map(|key| Tmdb::new(state.config.tmdb_base.clone(), key));
+        .map(|base| Tmdb::new(base, state.config.tmdb_api_key.clone()));
     Ok(Json(scan_library(&state.db, &lib, tmdb.as_ref()).await?))
 }
 

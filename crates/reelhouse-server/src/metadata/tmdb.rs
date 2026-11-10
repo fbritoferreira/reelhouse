@@ -21,7 +21,8 @@ pub struct Meta {
 
 pub struct Tmdb {
     base: Url,
-    key: String,
+    /// `None` when talking to the Reelhouse metadata proxy, which adds the key itself.
+    key: Option<String>,
     client: reqwest::Client,
 }
 
@@ -60,7 +61,7 @@ fn year(date: Option<&str>) -> Option<i64> {
 }
 
 impl Tmdb {
-    pub fn new(base: Url, key: String) -> Self {
+    pub fn new(base: Url, key: Option<String>) -> Self {
         Self {
             base,
             key,
@@ -74,9 +75,13 @@ impl Tmdb {
         query: &[(&str, &str)],
     ) -> Result<Option<T>> {
         let mut url = self.base.join(path)?;
-        url.query_pairs_mut()
-            .append_pair("api_key", &self.key)
-            .extend_pairs(query);
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(key) = &self.key {
+                pairs.append_pair("api_key", key);
+            }
+            pairs.extend_pairs(query);
+        }
         let res = self.client.get(url).send().await?;
         if res.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
