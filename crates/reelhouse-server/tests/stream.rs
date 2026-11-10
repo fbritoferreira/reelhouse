@@ -188,3 +188,10 @@ async fn idle_hls_session_is_reaped() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn file_requires_token() {
+    let app = common::app().await;
+    let (status, _, _) = get(&app, "/api/v1/items/1/file", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
