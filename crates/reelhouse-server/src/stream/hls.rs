@@ -1,7 +1,7 @@
 //! One ffmpeg process per HLS session, writing fMP4 segments to a temp directory.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -21,14 +21,13 @@ pub struct Sessions {
 }
 
 impl Sessions {
-    /// Starts ffmpeg for `file` and returns the session id.
-    pub fn start(&self, file: &Path, method: PlaybackMethod, max_height: u32) -> Result<String> {
+    /// Starts ffmpeg for `input` (a file path or a stream URL) and returns the session id.
+    pub fn start(&self, input: &str, method: PlaybackMethod, max_height: u32) -> Result<String> {
         let dir = tempfile::Builder::new()
             .prefix("reelhouse-hls-")
             .tempdir()?;
         let mut cmd = Command::new("ffmpeg");
-        cmd.args(["-v", "error", "-nostdin", "-i"])
-            .arg(file)
+        cmd.args(["-v", "error", "-nostdin", "-i", input])
             .args(["-map", "0:v:0", "-map", "0:a:0?"]);
         match method {
             PlaybackMethod::Transcode => {

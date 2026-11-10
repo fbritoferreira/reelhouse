@@ -61,9 +61,7 @@ pub async fn playback(
     let url = match method {
         PlaybackMethod::Direct => format!("/api/v1/items/{id}/file"),
         _ => {
-            let session = state
-                .hls
-                .start(std::path::Path::new(&path), method, caps.max_height)?;
+            let session = state.hls.start(&path, method, caps.max_height)?;
             format!("/api/v1/hls/{session}/index.m3u8")
         }
     };
