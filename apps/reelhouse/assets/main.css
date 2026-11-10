@@ -767,3 +767,37 @@ button.secondary.current { background: var(--surface-raised); }
 .live-group.continue { color: var(--text); font-weight: 600; margin-bottom: 0.4rem; }
 .vod-episode { grid-template-columns: 2.4em minmax(0, 1fr) auto auto; }
 .vod-episode-progress { position: static; width: 5rem; }
+
+/* ---- Hover preview (pointer devices) -------------------------------------------------------
+   Resting on a poster for half a second raises a panel inside its artwork: what it is, a few
+   lines about it, and Play. Inside, not over, so scrolling rows never clip it or shift. */
+.peek { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .poster-art { position: relative; }
+  .peek {
+    position: absolute; inset: auto 0 0 0; display: flex; flex-direction: column; gap: 0.35rem;
+    padding: 2.5rem 0.75rem 0.75rem; color: var(--text);
+    background: linear-gradient(to top, rgba(21, 13, 23, 0.97) 55%, rgba(21, 13, 23, 0));
+    opacity: 0; transform: translateY(12%); pointer-events: none;
+    transition: opacity 180ms ease, transform 220ms ease;
+  }
+  .poster:hover .peek {
+    opacity: 1; transform: none; pointer-events: auto;
+    transition-delay: 450ms;
+  }
+  .peek-title { font-family: var(--display); font-weight: 700; line-height: 1.15; }
+  .peek-facts { display: flex; gap: 0.6rem; font-size: var(--t-small); color: var(--muted); }
+  .peek-overview {
+    font-size: var(--t-small); line-height: 1.4; color: var(--muted);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  }
+  .peek-play {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 0.45em; margin-top: 0.2rem;
+    padding: 0.4em 0.95em; border-radius: 999px; background: var(--bulb); color: var(--curtain-deep);
+    font-weight: 700; font-size: var(--t-small); cursor: pointer;
+  }
+  .peek-play .play-icon { border-left-width: 0.6em; border-top-width: 0.36em; border-bottom-width: 0.36em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .peek { transition: none; transform: none; }
+}
