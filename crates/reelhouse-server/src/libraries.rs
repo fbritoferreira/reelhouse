@@ -119,6 +119,8 @@ pub struct ItemRow {
     played: Option<bool>,
     has_poster: bool,
     has_backdrop: bool,
+    show_id: Option<i64>,
+    show_title: Option<String>,
 }
 
 impl From<ItemRow> for Item {
@@ -150,6 +152,8 @@ impl From<ItemRow> for Item {
             } else {
                 r.backdrop_url
             },
+            show_id: r.show_id,
+            show_title: r.show_title,
             progress: r.position_s.map(|position_s| Progress {
                 position_s,
                 played: r.played.unwrap_or(false),
@@ -161,8 +165,11 @@ impl From<ItemRow> for Item {
 pub const ITEM_SELECT: &str = "SELECT i.id, i.kind, i.parent_id, i.title, i.year, i.season_no, i.episode_no, i.duration_s, \
      i.overview, i.poster_url, i.backdrop_url, p.position_s, p.played, \
      EXISTS (SELECT 1 FROM images WHERE item_id = i.id AND kind = 'poster') AS has_poster, \
-     EXISTS (SELECT 1 FROM images WHERE item_id = i.id AND kind = 'backdrop') AS has_backdrop \
-     FROM items i LEFT JOIN progress p ON p.item_id = i.id AND p.user_id = ?";
+     EXISTS (SELECT 1 FROM images WHERE item_id = i.id AND kind = 'backdrop') AS has_backdrop, \
+     CASE i.kind WHEN 'season' THEN par.id WHEN 'episode' THEN gp.id END AS show_id, \
+     CASE i.kind WHEN 'season' THEN par.title WHEN 'episode' THEN gp.title END AS show_title \
+     FROM items i LEFT JOIN progress p ON p.item_id = i.id AND p.user_id = ? \
+     LEFT JOIN items par ON par.id = i.parent_id LEFT JOIN items gp ON gp.id = par.parent_id";
 
 pub async fn items(
     State(state): State<AppState>,

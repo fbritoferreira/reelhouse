@@ -74,24 +74,37 @@ fn Shell() -> Element {
         }
     });
     let user = session.read().user.clone();
+    let route = use_route::<Route>();
+    let here = |r: Route| {
+        if route == r {
+            "nav-link current"
+        } else {
+            "nav-link"
+        }
+    };
     rsx! {
         header { class: "bar",
             Link { class: "brand", to: Route::Home {}, "Reelhouse" }
-            nav { class: "bar-links",
-                Link { to: Route::LinkDevice { code: String::new() }, "Link a device" }
+            nav { class: "bar-links", "aria-label": "Main",
+                Link { class: here(Route::Home {}), to: Route::Home {}, "Home" }
+                Link { class: here(Route::LinkDevice { code: String::new() }), to: Route::LinkDevice { code: String::new() }, "Link a device" }
                 if user.as_ref().is_some_and(|u| u.is_admin) {
-                    Link { to: Route::Admin {}, "Manage" }
+                    Link { class: here(Route::Admin {}), to: Route::Admin {}, "Manage" }
                 }
+            }
+            if let Some(u) = user.clone() {
                 button {
-                    class: "link",
+                    class: "user-chip",
+                    title: "Switch user",
                     onclick: move |_| {
                         session::sign_out();
                         nav.replace(Route::Login {});
                     },
-                    "Switch user"
+                    span { class: "avatar", "{u.name.chars().next().unwrap_or('?').to_uppercase()}" }
+                    span { class: "user-chip-text", "Switch user" }
                 }
             }
         }
-        main { class: "page", Outlet::<Route> {} }
+        main { Outlet::<Route> {} }
     }
 }

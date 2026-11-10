@@ -19,10 +19,12 @@ pub fn LinkDevice(code: String) -> Element {
         }
     };
     rsx! {
-        div { class: "admin",
-            section {
-                h2 { "Link a device" }
+        div { class: "page page-top manage",
+            header { class: "page-head",
+                h1 { "Link a device" }
                 p { class: "quiet", "Enter the code shown on your TV to sign it in as you." }
+            }
+            section { class: "panel",
                 form { class: "inline-form", onsubmit: submit,
                     input {
                         autofocus: true,

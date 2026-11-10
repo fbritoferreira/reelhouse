@@ -80,6 +80,11 @@ pub struct Item {
     pub poster_url: Option<String>,
     pub backdrop_url: Option<String>,
     pub progress: Option<Progress>,
+    /// For seasons and episodes, the show they belong to.
+    #[serde(default)]
+    pub show_id: Option<i64>,
+    #[serde(default)]
+    pub show_title: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
