@@ -103,6 +103,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/vod/continue",
             get(crate::livetv::vod::continue_watching),
         )
+        .route("/api/v1/vod/search", get(crate::livetv::vod::search))
         .route("/api/v1/vod/{id}", get(crate::livetv::vod::title))
         .route("/api/v1/vod/{id}/file", get(crate::livetv::vod::file))
         .route(

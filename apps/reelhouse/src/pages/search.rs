@@ -28,6 +28,15 @@ pub fn Search() -> Element {
         futures_timer::Delay::new(std::time::Duration::from_millis(250)).await;
         client().search_channels(q.trim()).await.unwrap_or_default()
     });
+    let on_demand = use_resource(move || async move {
+        let q = query();
+        if q.trim().chars().count() < 2 {
+            return reelhouse_api::VodSearch::default();
+        }
+        futures_timer::Delay::new(std::time::Duration::from_millis(250)).await;
+        client().vod_search(q.trim()).await.unwrap_or_default()
+    });
+    let vod = on_demand.read().clone().unwrap_or_default();
     let q = query().trim().to_lowercase();
     let matches: Vec<Item> = match (&*titles.read(), q.is_empty()) {
         (Some(all), false) => all
@@ -52,7 +61,7 @@ pub fn Search() -> Element {
             }
             if q.is_empty() {
                 p { class: "quiet", "Type a title or a channel name." }
-            } else if matches.is_empty() && chans.is_empty() {
+            } else if matches.is_empty() && chans.is_empty() && vod.films.is_empty() && vod.shows.is_empty() {
                 p { class: "quiet", "Nothing matches \u{201c}{query}\u{201d}." }
             }
             if !matches.is_empty() {
@@ -61,6 +70,46 @@ pub fn Search() -> Element {
                     div { class: "grid",
                         for item in matches {
                             Poster { key: "{item.id}", item }
+                        }
+                    }
+                }
+            }
+            if !vod.films.is_empty() {
+                section { class: "row",
+                    h2 { "On demand films" }
+                    div { class: "grid",
+                        for f in vod.films.clone() {
+                            Link { key: "{f.id}", class: "poster", to: Route::VodFilm { id: f.id },
+                                div { class: "poster-art",
+                                    if let Some(url) = f.poster_url.clone() {
+                                        img { src: url, alt: "", loading: "lazy" }
+                                    }
+                                }
+                                span { class: "poster-title", "{f.title}" }
+                                if let Some(y) = f.year {
+                                    span { class: "poster-caption", "{y}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !vod.shows.is_empty() {
+                section { class: "row",
+                    h2 { "On demand series" }
+                    div { class: "grid",
+                        for s in vod.shows.clone() {
+                            Link { key: "{s.title}", class: "poster", to: Route::VodShow { title: s.title.clone() },
+                                div { class: "poster-art",
+                                    if let Some(url) = s.poster_url.clone() {
+                                        img { src: url, alt: "", loading: "lazy" }
+                                    }
+                                }
+                                span { class: "poster-title", "{s.title}" }
+                                span { class: "poster-caption",
+                                    if s.seasons > 1 { "{s.seasons} seasons" } else { "{s.episodes} episodes" }
+                                }
+                            }
                         }
                     }
                 }

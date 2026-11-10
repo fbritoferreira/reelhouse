@@ -271,3 +271,19 @@ async fn a_title_downloads_through_the_server_with_ranges() {
     assert_eq!(range.as_deref(), Some("bytes 6-10/11"));
     assert_eq!(&body[..], b"world");
 }
+
+#[tokio::test]
+async fn films_and_shows_can_be_searched() {
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), "http://example.invalid/movie/u/p/1.mp4");
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (status, found) = call(&app, "GET", "/api/v1/vod/search?q=wir", Some(&token), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(found["films"], json!([]));
+    assert_eq!(found["shows"][0]["title"], "The Wire");
+    let (_, found) = call(&app, "GET", "/api/v1/vod/search?q=heat", Some(&token), None).await;
+    assert_eq!(found["films"][0]["title"], "Heat");
+    assert_eq!(found["shows"], json!([]));
+}

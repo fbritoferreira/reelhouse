@@ -259,6 +259,13 @@ pub struct VodMovie {
     pub progress: Option<Progress>,
 }
 
+/// On-demand titles matching a search.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct VodSearch {
+    pub films: Vec<VodMovie>,
+    pub shows: Vec<VodShow>,
+}
+
 /// One on-demand title with where you are in it.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct VodTitle {
