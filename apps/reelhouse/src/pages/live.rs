@@ -691,7 +691,7 @@ fn ChannelRow(
         li { onfocusin: move |_| on_focus.call(()), onmouseenter: move |_| on_focus.call(()),
             Link {
                 class: if lit { "channel lit" } else { "channel" },
-                to: Route::Watch { id: c.id, group },
+                to: Route::Watch { id: c.id, group: group.into() },
                 onclick: move |_| LIVE.write().place.returning = true,
                 span { class: "channel-number", "{number}" }
                 Logo { name: c.name.clone(), url: c.logo_url.clone() }
@@ -728,8 +728,8 @@ fn fraction(p: &Programme, now: i64) -> f64 {
 
 /// Full-screen live channel. Each channel gets a fresh `Tuned` so changing channel restarts it.
 #[component]
-pub fn Watch(id: i64, group: String) -> Element {
-    rsx! { Tuned { key: "{id}", id, group } }
+pub fn Watch(id: i64, group: crate::Group) -> Element {
+    rsx! { Tuned { key: "{id}", id, group: group.0 } }
 }
 
 /// Polls of 250 ms before the channel banner fades (4 s).
@@ -808,7 +808,7 @@ fn Tuned(id: i64, group: String) -> Element {
             p.pause();
             nav.replace(Route::Watch {
                 id: to,
-                group: group.clone(),
+                group: group.clone().into(),
             });
         }
     };

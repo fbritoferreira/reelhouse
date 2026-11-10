@@ -89,7 +89,7 @@ pub fn Home() -> Element {
                                 Link {
                                     key: "{c.id}",
                                     class: "channel-tile",
-                                    to: Route::Watch { id: c.id, group: c.group.clone() },
+                                    to: Route::Watch { id: c.id, group: c.group.clone().into() },
                                     span { class: "channel-tile-art",
                                         if let Some(url) = c.logo_url.clone() {
                                             img { src: url, alt: "", loading: "lazy" }

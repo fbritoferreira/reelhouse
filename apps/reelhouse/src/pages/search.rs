@@ -122,7 +122,7 @@ pub fn Search() -> Element {
                             li { key: "{c.id}",
                                 Link {
                                     class: "channel",
-                                    to: Route::Watch { id: c.id, group: c.group_title.clone().unwrap_or_default() },
+                                    to: Route::Watch { id: c.id, group: c.group_title.clone().unwrap_or_default().into() },
                                     span { class: "channel-number", "{c.number.map(|n| n.to_string()).unwrap_or_default()}" }
                                     span { class: "channel-logo",
                                         if let Some(url) = c.logo_url.clone() {
