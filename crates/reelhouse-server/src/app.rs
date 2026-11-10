@@ -5,7 +5,7 @@ use axum::routing::{delete, get, post};
 use sqlx::SqlitePool;
 
 use crate::config::Config;
-use crate::users;
+use crate::{libraries, users};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,5 +24,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/me", get(users::me))
         .route("/api/v1/users", get(users::list).post(users::create))
         .route("/api/v1/users/{id}", delete(users::remove))
+        .route(
+            "/api/v1/libraries",
+            get(libraries::list).post(libraries::create),
+        )
+        .route("/api/v1/libraries/{id}/scan", post(libraries::scan))
+        .route("/api/v1/libraries/{id}/items", get(libraries::items))
+        .route("/api/v1/items/{id}", get(libraries::item))
+        .route("/api/v1/items/{id}/children", get(libraries::children))
         .with_state(state)
 }

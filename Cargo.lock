@@ -4616,11 +4616,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tower",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
 ]
 
 [[package]]
