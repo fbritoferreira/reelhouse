@@ -14,7 +14,10 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
-        <activity android:configChanges="orientation|screenLayout|screenSize|keyboardHidden" android:exported="true"
+        <!-- singleTask: launching again brings the running screen back instead of starting a second
+             activity in the same process, which the native layer cannot survive. -->
+        <activity android:configChanges="orientation|screenLayout|screenSize|keyboardHidden|keyboard|navigation|uiMode|density|smallestScreenSize" android:exported="true"
+            android:launchMode="singleTask"
             android:label="@string/app_name" android:name="dev.dioxus.main.MainActivity">
             <meta-data android:name="android.app.lib_name" android:value="main" />
             <meta-data android:name="android.app.func_name" android:value="ANativeActivity_onCreate" />
