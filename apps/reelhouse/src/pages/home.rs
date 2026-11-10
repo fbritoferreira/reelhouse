@@ -11,13 +11,14 @@ pub fn Home() -> Element {
     let data = use_resource(|| async move {
         let c = client();
         let cont = c.continue_watching().await?;
+        let added = c.recently_added().await.unwrap_or_default();
         let libs = c.libraries().await?;
         let mut rows = Vec::new();
         for lib in libs {
             let items = c.library_items(lib.id).await?;
             rows.push((lib, items));
         }
-        Ok::<_, reelhouse_core::ClientError>((cont, rows))
+        Ok::<_, reelhouse_core::ClientError>((cont, added, rows))
     });
     let on_demand =
         use_resource(|| async move { client().vod_continue().await.unwrap_or_default() });
@@ -26,7 +27,7 @@ pub fn Home() -> Element {
     match &*data.read() {
         None => rsx! { HomeSkeleton {} },
         Some(Err(e)) => rsx! { div { class: "page", LoadError { error: describe(e) } } },
-        Some(Ok((cont, rows))) => {
+        Some(Ok((cont, added, rows))) => {
             // The hero is what you are in the middle of, or else the first title with artwork.
             let featured: Option<Item> = cont
                 .iter()
@@ -111,6 +112,13 @@ pub fn Home() -> Element {
                             h2 { "No libraries yet" }
                             p { "Add your Movies and TV folders, and Reelhouse finds artwork and details for everything in them." }
                             Link { class: "primary big", to: Route::Admin {}, "Add a library" }
+                        }
+                    }
+                    if !added.is_empty() {
+                        Row { title: "Recently added", to: None,
+                            for item in added.clone() {
+                                Poster { key: "{item.id}", item }
+                            }
                         }
                     }
                     for (lib, items) in rows.clone() {

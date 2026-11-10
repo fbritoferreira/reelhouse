@@ -79,6 +79,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
+        .route("/api/v1/recent", get(progress::recently_added))
         .route("/api/v1/jobs", get(crate::jobs::list))
         .route("/api/v1/jobs/{id}", get(crate::jobs::get))
         .route(

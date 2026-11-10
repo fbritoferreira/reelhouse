@@ -50,3 +50,20 @@ pub async fn continue_watching(
     .await?;
     Ok(Json(rows.into_iter().map(Item::from).collect()))
 }
+
+/// Films and shows, newest first; a show counts as new when an episode of it is. At most 20.
+pub async fn recently_added(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> ApiResult<Json<Vec<Item>>> {
+    let rows: Vec<ItemRow> = sqlx::query_as(&format!(
+        "{ITEM_SELECT} WHERE i.parent_id IS NULL ORDER BY ( \
+           SELECT MAX(d.added_at) FROM items d WHERE d.id = i.id OR d.parent_id = i.id \
+           OR d.parent_id IN (SELECT s.id FROM items s WHERE s.parent_id = i.id)) DESC, \
+         i.id DESC LIMIT 20"
+    ))
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(rows.into_iter().map(Item::from).collect()))
+}
