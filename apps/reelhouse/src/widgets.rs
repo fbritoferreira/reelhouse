@@ -138,10 +138,45 @@ pub fn Poster(item: Item) -> Element {
                 if let Some(f) = watched_fraction(&item) {
                     Progress { fraction: f }
                 }
+                Peek { item: item.clone() }
             }
             span { class: "poster-title", "{item.title}" }
             if !year.is_empty() {
                 span { class: "poster-caption", "{year}" }
+            }
+        }
+    }
+}
+
+/// What a poster is, shown over it after a moment's hover (pointer devices only; see CSS).
+#[component]
+fn Peek(item: Item) -> Element {
+    let nav = navigator();
+    let id = item.id;
+    let playable = matches!(item.kind, ItemKind::Movie | ItemKind::Episode);
+    rsx! {
+        span { class: "peek", "aria-hidden": "true",
+            span { class: "peek-title", "{item.title}" }
+            span { class: "peek-facts",
+                for fact in facts(&item) {
+                    span { "{fact}" }
+                }
+            }
+            if let Some(o) = item.overview.clone() {
+                span { class: "peek-overview", "{o}" }
+            }
+            if playable {
+                span {
+                    class: "peek-play",
+                    onclick: move |e| {
+                        // Inside the poster's link: play instead of opening the page.
+                        e.prevent_default();
+                        e.stop_propagation();
+                        nav.push(Route::Play { id });
+                    },
+                    span { class: "play-icon" }
+                    if watched_fraction(&item).is_some() { "Resume" } else { "Play" }
+                }
             }
         }
     }
