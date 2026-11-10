@@ -101,12 +101,21 @@ pub struct ShowQuery {
     show: String,
 }
 
+#[derive(sqlx::FromRow)]
+struct EpisodeRow {
+    id: i64,
+    title: String,
+    season_no: Option<i64>,
+    episode_no: Option<i64>,
+    poster_url: Option<String>,
+}
+
 pub async fn episodes(
     State(state): State<AppState>,
     _user: CurrentUser,
     Query(q): Query<ShowQuery>,
 ) -> ApiResult<Json<Vec<VodEpisode>>> {
-    let rows: Vec<(i64, String, Option<i64>, Option<i64>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<EpisodeRow> = sqlx::query_as(
         "SELECT id, title, season_no, episode_no, poster_url FROM vod_items \
          WHERE kind = 'episode' AND show_title = ? ORDER BY season_no, episode_no, id",
     )
@@ -115,15 +124,13 @@ pub async fn episodes(
     .await?;
     Ok(Json(
         rows.into_iter()
-            .map(
-                |(id, title, season_no, episode_no, poster_url)| VodEpisode {
-                    id,
-                    title,
-                    season_no,
-                    episode_no,
-                    poster_url,
-                },
-            )
+            .map(|r| VodEpisode {
+                id: r.id,
+                title: r.title,
+                season_no: r.season_no,
+                episode_no: r.episode_no,
+                poster_url: r.poster_url,
+            })
             .collect(),
     ))
 }
