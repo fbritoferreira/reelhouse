@@ -8,7 +8,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::config::Config;
 use crate::stream::hls::Sessions;
 use crate::stream::routes as stream;
-use crate::{libraries, progress, users};
+use crate::{import, libraries, progress, users};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -30,7 +30,7 @@ impl AppState {
     }
 }
 
-pub const FEATURES: &[&str] = &["libraries", "users", "hls"];
+pub const FEATURES: &[&str] = &["libraries", "users", "hls", "plex_import"];
 
 pub fn router(state: AppState) -> Router {
     let web_dir = state.config.web_dir.clone();
@@ -55,6 +55,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
+        .route("/api/v1/import/plex", post(import::plex_import))
         .with_state(state);
     match web_dir {
         // Unknown paths fall back to index.html so the app's own routes load on refresh.

@@ -97,4 +97,11 @@ async fn server_info_lists_features() {
             .iter()
             .any(|f| f == "libraries")
     );
+    assert!(
+        info["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f == "plex_import")
+    );
 }

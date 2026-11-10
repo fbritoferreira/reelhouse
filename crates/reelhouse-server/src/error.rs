@@ -13,6 +13,9 @@ pub enum ApiError {
     Conflict(&'static str),
     #[error("{0}")]
     BadRequest(String),
+    /// An upstream server (e.g. Plex during import) failed or refused us.
+    #[error("{0}")]
+    BadGateway(String),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -34,6 +37,7 @@ impl IntoResponse for ApiError {
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::Conflict(_) => StatusCode::CONFLICT,
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            ApiError::BadGateway(_) => StatusCode::BAD_GATEWAY,
             ApiError::Internal(e) => {
                 tracing::error!("{e:#}");
                 StatusCode::INTERNAL_SERVER_ERROR
