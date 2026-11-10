@@ -22,12 +22,24 @@ pub struct Sessions {
 
 impl Sessions {
     /// Starts ffmpeg for `input` (a file path or a stream URL) and returns the session id.
-    pub fn start(&self, input: &str, method: PlaybackMethod, max_height: u32) -> Result<String> {
+    /// `start_s` > 0 begins the conversion that far in.
+    pub fn start(
+        &self,
+        input: &str,
+        method: PlaybackMethod,
+        max_height: u32,
+        start_s: f64,
+    ) -> Result<String> {
         let dir = tempfile::Builder::new()
             .prefix("reelhouse-hls-")
             .tempdir()?;
         let mut cmd = Command::new("ffmpeg");
-        cmd.args(["-v", "error", "-nostdin", "-i", input])
+        cmd.args(["-v", "error", "-nostdin"]);
+        if start_s > 0.0 {
+            // Before -i: a fast keyframe seek on the input.
+            cmd.args(["-ss", &format!("{start_s:.3}")]);
+        }
+        cmd.args(["-i", input])
             .args(["-map", "0:v:0", "-map", "0:a:0?"]);
         match method {
             PlaybackMethod::Transcode => {

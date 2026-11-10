@@ -187,13 +187,18 @@ impl Client {
         self.get("/api/v1/continue").await
     }
 
+    /// How to play `id`; an HLS conversion begins `start_s` seconds in.
     pub async fn playback(
         &self,
         id: i64,
         caps: &Capabilities,
+        start_s: f64,
     ) -> Result<PlaybackPlan, ClientError> {
-        self.post(&format!("/api/v1/items/{id}/playback"), caps)
-            .await
+        self.post(
+            &format!("/api/v1/items/{id}/playback?start={start_s:.3}"),
+            caps,
+        )
+        .await
     }
 
     /// Starts sign-in by code for this device.

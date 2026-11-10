@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::response::{IntoResponse, Response};
 use reelhouse_api::{Capabilities, PlaybackMethod, PlaybackPlan};
 use tower::ServiceExt;
@@ -50,22 +50,36 @@ async fn serve_file(path: std::path::PathBuf, req: Request) -> ApiResult<Respons
     Ok(res.map(Body::new).into_response())
 }
 
+#[derive(serde::Deserialize)]
+pub struct StartAt {
+    start: Option<f64>,
+}
+
 pub async fn playback(
     State(state): State<AppState>,
     _user: CurrentUser,
     Path(id): Path<i64>,
+    Query(at): Query<StartAt>,
     Json(caps): Json<Capabilities>,
 ) -> ApiResult<Json<PlaybackPlan>> {
     let (path, info) = media(&state, id).await?;
     let method = decide(&info, &caps);
-    let url = match method {
-        PlaybackMethod::Direct => format!("/api/v1/items/{id}/file"),
+    let start_s = at
+        .start
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(0.0);
+    let (url, start_s) = match method {
+        PlaybackMethod::Direct => (format!("/api/v1/items/{id}/file"), 0.0),
         _ => {
-            let session = state.hls.start(&path, method, caps.max_height)?;
-            format!("/api/v1/hls/{session}/index.m3u8")
+            let session = state.hls.start(&path, method, caps.max_height, start_s)?;
+            (format!("/api/v1/hls/{session}/index.m3u8"), start_s)
         }
     };
-    Ok(Json(PlaybackPlan { method, url }))
+    Ok(Json(PlaybackPlan {
+        method,
+        url,
+        start_s,
+    }))
 }
 
 /// The original file, with HTTP range support (tower-http answers 206 and 416).

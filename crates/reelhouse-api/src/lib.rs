@@ -121,6 +121,10 @@ pub enum PlaybackMethod {
 pub struct PlaybackPlan {
     pub method: PlaybackMethod,
     pub url: String,
+    /// Where in the title the stream begins: an HLS conversion can start part-way through, and
+    /// its own clock then counts from here. Direct play always starts at 0 and seeks itself.
+    #[serde(default)]
+    pub start_s: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

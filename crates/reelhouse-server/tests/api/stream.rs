@@ -170,6 +170,26 @@ async fn hls_playlist_appears() {
 }
 
 #[tokio::test]
+async fn hls_can_start_part_way_through() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(60)).await;
+    let caps = json!({"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "max_height": 1080});
+    let (status, plan) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/items/{id}/playback?start=1.5"),
+        Some(&token),
+        Some(caps),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(plan["method"], "remux");
+    assert_eq!(plan["start_s"], 1.5);
+}
+
+#[tokio::test]
 async fn idle_hls_session_is_reaped() {
     if !have_ffmpeg() {
         return;

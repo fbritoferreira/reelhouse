@@ -256,10 +256,11 @@ pub async fn play(
         .fetch_one(&state.db)
         .await?;
     let method = PlaybackMethod::Remux;
-    let session = state.hls.start(&url, method, u32::MAX)?;
+    let session = state.hls.start(&url, method, u32::MAX, 0.0)?;
     Ok(Json(PlaybackPlan {
         method,
         url: format!("/api/v1/hls/{session}/index.m3u8"),
+        start_s: 0.0,
     }))
 }
 
