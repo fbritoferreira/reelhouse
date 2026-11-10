@@ -139,6 +139,9 @@ async fn scans_tv_into_show_season_episode() {
     )
     .await;
     assert_eq!(eps[0]["episode_no"], 7);
+    assert_eq!(eps[0]["show_title"], "The Bear");
+    assert_eq!(eps[0]["show_id"], show);
+    assert_eq!(seasons[0]["show_title"], "The Bear");
 }
 
 #[tokio::test]
