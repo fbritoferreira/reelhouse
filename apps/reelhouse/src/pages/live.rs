@@ -780,11 +780,25 @@ fn Tuned(id: i64, group: String) -> Element {
     });
 
     let p = player.clone();
+    let g = group.clone();
     use_future(move || {
         let p = p.clone();
+        let g = g.clone();
         async move {
             let c = client();
-            match c.play_channel(id).await {
+            let result = c.play_channel(id).await;
+            // The server just marked the channel refused, or cleared the mark: the cached list
+            // no longer says so; fetch it afresh next time.
+            let was_refused = LIVE.peek().guides.get(&g).is_some_and(|cached| {
+                cached
+                    .value
+                    .iter()
+                    .any(|e| e.channel.id == id && e.channel.refused.is_some())
+            });
+            if result.is_err() != was_refused {
+                LIVE.write().guides.remove(&g);
+            }
+            match result {
                 Ok(plan) => {
                     p.load(&c.media_url(&plan.url));
                     p.play();
