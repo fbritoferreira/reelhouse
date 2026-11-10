@@ -815,3 +815,20 @@ button.secondary.current { background: var(--surface-raised); }
 .track.current::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--bulb); }
 .tv .track-picker { grid-template-columns: repeat(2, minmax(8rem, 11rem)); gap: 1rem; padding: 0.75rem 1rem; }
 .tv .track { font-size: 0.8125rem; }
+
+/* ---- Home extras ----------------------------------------------------------------------------- */
+.channel-tile { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; scroll-snap-align: start; }
+.channel-tile-art {
+  position: relative; aspect-ratio: 16 / 10; border-radius: var(--radius); background: var(--surface);
+  display: grid; place-items: center; overflow: hidden;
+}
+.channel-tile-art img { max-width: 70%; max-height: 65%; object-fit: contain; }
+.channel-tile-art .channel-monogram { font-size: 1.6rem; }
+.channel-tile-art .lamp { position: absolute; top: 0.6rem; right: 0.6rem; }
+.channel-tile:focus-visible { outline: none; box-shadow: none; }
+.channel-tile:focus-visible .channel-tile-art { outline: 3px solid var(--bulb); outline-offset: 4px; box-shadow: 0 0 0 9px rgba(255, 200, 97, 0.14), 0 0 34px var(--bulb-glow); }
+.row-scroll:has(.channel-tile) { grid-auto-columns: clamp(10rem, 16vw, 14rem); }
+.tv .row-scroll:has(.channel-tile) { grid-auto-columns: 150px; }
+.skeleton-hero { height: 62vh; border-radius: 0; }
+.skeleton-heading { height: 1.4rem; width: 12rem; margin-bottom: 0.8rem; }
+.skeleton-row-posters { display: grid; grid-auto-flow: column; grid-auto-columns: clamp(8rem, 13vw, 11rem); gap: 1rem; overflow: hidden; }
