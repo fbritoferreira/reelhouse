@@ -1,6 +1,7 @@
 //! Downloads in the browser, with the same calls as the native module so the rings, the
 //! Downloads screen and offline playback work unchanged. Files live in the origin's private file
-//! system (OPFS) as `dl-<id>`; the index (what is kept, how far each got) in local storage.
+//! system (OPFS) as `dl-<id>`, or, on plain http where OPFS is not offered, in IndexedDB as
+//! chunks; the index (what is kept, how far each got) in local storage.
 //!
 //! A small JavaScript engine does the fetching, one download at a time: it writes chunks as they
 //! arrive, resumes from the bytes it has when the server allows ranges, and keeps the index's
@@ -55,21 +56,73 @@ const ENGINE: &str = r#"
     const d = list.find(d => d.item.id === id);
     if (d) { d.bytes = bytes; d.total = total; d.done = done; localStorage.setItem(KEY, JSON.stringify(list)); }
   };
+  // Where copies live. OPFS needs a secure page (HTTPS or localhost); on plain http, for a
+  // server reached by its LAN address, IndexedDB keeps them in chunks instead.
+  const opfs = !!(window.isSecureContext && navigator.storage && navigator.storage.getDirectory);
+  const db = () => new Promise((ok, fail) => {
+    const r = indexedDB.open('reelhouse-downloads', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('chunks');
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => fail(r.error);
+  });
+  const range = id => IDBKeyRange.bound(id + ':', id + ':\uffff');
+  const chunkKey = (id, n) => id + ':' + String(n).padStart(8, '0');
+  const idbRun = async (mode, fn) => {
+    const d = await db();
+    return new Promise((ok, fail) => {
+      const t = d.transaction('chunks', mode);
+      const req = fn(t.objectStore('chunks'));
+      t.oncomplete = () => ok(req && req.result);
+      t.onerror = () => fail(t.error);
+    });
+  };
+  // A writer with the bytes kept so far: `offset`, `write(bytes)`, `reset()`, `close()`.
+  const open = async (id, resumable) => {
+    if (opfs) {
+      const root = await navigator.storage.getDirectory();
+      const fh = await root.getFileHandle('dl-' + id, { create: true });
+      const offset = resumable ? (await fh.getFile()).size : 0;
+      const w = await fh.createWritable({ keepExistingData: offset > 0 });
+      await w.seek(offset);
+      return { offset, write: b => w.write(b), reset: async () => { await w.truncate(0); await w.seek(0); }, close: () => w.close() };
+    }
+    let parts = resumable ? (await idbRun('readonly', s => s.getAll(range(id)))) || [] : [];
+    if (!resumable) await idbRun('readwrite', s => s.delete(range(id)));
+    let n = parts.length;
+    const offset = parts.reduce((a, b) => a + b.size, 0);
+    let buf = [], size = 0;
+    const flush = async () => {
+      if (!size) return;
+      const blob = new Blob(buf);
+      buf = []; size = 0;
+      const k = chunkKey(id, n++);
+      await idbRun('readwrite', s => s.put(blob, k));
+    };
+    return {
+      offset,
+      write: async b => { buf.push(b); size += b.length; if (size >= 4 << 20) await flush(); },
+      reset: async () => { buf = []; size = 0; n = 0; await idbRun('readwrite', s => s.delete(range(id))); },
+      close: flush,
+    };
+  };
+  // The kept copy as a playable Blob or File.
+  window.__rhDlFile = async id => {
+    if (opfs) return (await (await navigator.storage.getDirectory()).getFileHandle('dl-' + id)).getFile();
+    const parts = await idbRun('readonly', s => s.getAll(range(id)));
+    return new Blob(parts, { type: 'video/mp4' });
+  };
   const fetchOne = async ({ id, url, resumable }) => {
     const st = live[id] = { status: 'running', bytes: 0, total: null };
     let w;
     try {
-      const root = await navigator.storage.getDirectory();
-      const fh = await root.getFileHandle('dl-' + id, { create: true });
-      let offset = resumable ? (await fh.getFile()).size : 0;
-      w = await fh.createWritable({ keepExistingData: offset > 0 });
+      w = await open(id, resumable);
+      let offset = w.offset;
       const res = await fetch(url, { headers: offset > 0 ? { Range: 'bytes=' + offset + '-' } : {} });
       if (res.status !== 200 && res.status !== 206) throw new Error('the server answered ' + res.status);
-      if (res.status === 200) { offset = 0; await w.truncate(0); }
-      await w.seek(offset);
-      const range = res.headers.get('content-range');
+      if (res.status === 200 && offset > 0) { offset = 0; await w.reset(); }
+      const rng = res.headers.get('content-range');
       const length = res.headers.get('content-length');
-      st.total = range && range.includes('/') ? Number(range.split('/')[1])
+      st.total = rng && rng.includes('/') ? Number(rng.split('/')[1])
         : length ? offset + Number(length) : null;
       st.bytes = offset;
       const reader = res.body.getReader();
@@ -106,7 +159,8 @@ const ENGINE: &str = r#"
     const i = queue.findIndex(q => q.id === id);
     if (i >= 0) queue.splice(i, 1);
     delete live[id];
-    navigator.storage.getDirectory().then(r => r.removeEntry('dl-' + id)).catch(() => {});
+    if (opfs) navigator.storage.getDirectory().then(r => r.removeEntry('dl-' + id)).catch(() => {});
+    else idbRun('readwrite', s => s.delete(range(id))).catch(() => {});
   };
 })()
 "#;
@@ -252,6 +306,8 @@ pub fn remove(id: i64) {
 
 /// The URL the web player opens for a kept copy: `opfs:<id>`, resolved in the player.
 pub fn local_url(id: i64) -> Option<String> {
+    // The player asks the engine for the file.
+    engine();
     index()
         .iter()
         .any(|d| d.item.id == id && d.done)
