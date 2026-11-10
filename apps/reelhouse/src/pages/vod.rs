@@ -416,6 +416,11 @@ pub fn VodFilm(id: i64) -> Element {
                             if resume { "Resume" } else { "Play" }
                         }
                         crate::download_ui::DownloadButton { item: vod_item(&t) }
+                        crate::widgets::WatchedToggle {
+                            id: t.id,
+                            watched: t.progress.as_ref().is_some_and(|p| p.played),
+                            on_demand: true,
+                        }
                     }
                 }
             }
@@ -465,10 +470,14 @@ pub fn VodShow(title: String) -> Element {
                                         span { class: "progress-track vod-episode-progress",
                                             span { class: "progress-fill", style: "width: {f * 100.0}%" }
                                         }
-                                    } else if e.progress.as_ref().is_some_and(|p| p.played) {
-                                        span { class: "watched-inline", "aria-label": "Watched", "✓" }
                                     }
                                     span { class: "play-icon", "aria-hidden": "true" }
+                                }
+                                crate::widgets::WatchedToggle {
+                                    id: e.id,
+                                    watched: e.progress.as_ref().is_some_and(|p| p.played),
+                                    compact: true,
+                                    on_demand: true,
                                 }
                                 crate::download_ui::EpisodeDownload { ep: vod_item(&episode_title(&e, &title)) }
                             }

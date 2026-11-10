@@ -847,3 +847,15 @@ button.secondary.current { background: var(--surface-raised); }
 .vod-film-text { display: flex; flex-direction: column; gap: 0.6rem; }
 .vod-show .episode-item { display: flex; align-items: center; gap: 0.5rem; }
 .vod-show .episode-item .vod-episode { flex: 1; min-width: 0; }
+
+/* Watched: a tick that fills when set. */
+.watched-button svg, .watched-toggle svg { width: 1.1em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.watched-button.on { color: var(--bulb); }
+.watched-toggle {
+  flex: none; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%;
+  background: transparent; color: var(--muted); border: 1.5px solid var(--line);
+}
+.watched-toggle:hover { color: var(--text); }
+.watched-toggle.on { background: var(--bulb); border-color: var(--bulb); color: var(--curtain-deep); }
+.episodes-head { display: flex; justify-content: flex-end; max-width: 72rem; margin-bottom: 0.5rem; }
+.tv .watched-toggle { width: 1.9rem; height: 1.9rem; }
