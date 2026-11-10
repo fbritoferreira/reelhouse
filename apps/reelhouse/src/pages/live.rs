@@ -17,9 +17,9 @@ use crate::widgets::{LoadError, describe};
 /// The device's clock: Unix seconds and JavaScript's timezone offset, read through the webview so
 /// web and Android agree. Re-read every 30 seconds.
 #[derive(Clone, Copy, PartialEq, Default)]
-struct Clock {
-    now: i64,
-    offset_min: i64,
+pub(crate) struct Clock {
+    pub now: i64,
+    pub offset_min: i64,
 }
 
 fn use_clock() -> Signal<Clock> {
@@ -181,6 +181,11 @@ pub(crate) fn families_of(groups: &[(Option<String>, i64)]) -> Vec<Fam> {
 }
 
 const MODE_KEY: &str = "reelhouse.live.mode";
+const GRID_KEY: &str = "reelhouse.live.view";
+
+/// Whether Live shows the channel list or the guide grid; remembered on the device.
+static GRID: GlobalSignal<bool> =
+    Signal::global(|| crate::session::load(GRID_KEY).as_deref() == Some("guide"));
 
 /// Whether Live TV shows channels or what its sources offer on demand; remembered on the device.
 static ON_DEMAND: GlobalSignal<bool> =
@@ -397,11 +402,30 @@ fn LiveChannels() -> Element {
                                 header { class: "live-main-head",
                                     h2 { "{short}" }
                                     span { class: "quiet", "{detail}" }
+                                    div { class: "live-sort view-switch", role: "radiogroup", "aria-label": "List or guide",
+                                        for (as_grid, label) in [(false, "List"), (true, "Guide")] {
+                                            button {
+                                                key: "{label}",
+                                                role: "radio",
+                                                class: if GRID() == as_grid { "live-sort-option current" } else { "live-sort-option" },
+                                                "aria-checked": GRID() == as_grid,
+                                                onclick: move |_| {
+                                                    *GRID.write() = as_grid;
+                                                    crate::session::save(GRID_KEY, Some(if as_grid { "guide" } else { "list" }));
+                                                },
+                                                "{label}"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    GroupGuide { key: "{selected}", group: selected.clone(), time }
+                    if GRID() {
+                        super::guide::GuideGrid { key: "g{selected}", group: selected.clone(), time }
+                    } else {
+                        GroupGuide { key: "{selected}", group: selected.clone(), time }
+                    }
                 }
             }
         }

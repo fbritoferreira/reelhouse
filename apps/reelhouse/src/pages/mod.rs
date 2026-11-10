@@ -1,5 +1,6 @@
 mod admin;
 mod downloads;
+mod guide;
 mod home;
 mod item;
 mod library;
