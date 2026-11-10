@@ -364,6 +364,8 @@ pub fn LoadError(error: String) -> Element {
 pub fn describe(e: &ClientError) -> String {
     match e {
         ClientError::Unauthorized => "your session has ended. Sign in again.".into(),
+        // The server words these for people; the status code adds nothing.
+        ClientError::Status(400 | 409 | 502, why) if !why.trim().is_empty() => why.clone(),
         e => e.to_string(),
     }
 }
@@ -371,6 +373,14 @@ pub fn describe(e: &ClientError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_reasons_are_shown_as_written() {
+        let e = ClientError::Status(502, "your provider no longer carries this channel".into());
+        assert_eq!(describe(&e), "your provider no longer carries this channel");
+        let e = ClientError::Status(500, "boom".into());
+        assert_eq!(describe(&e), "server returned 500: boom");
+    }
 
     #[test]
     fn runtime_reads_naturally() {

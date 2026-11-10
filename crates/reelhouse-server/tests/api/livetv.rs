@@ -556,3 +556,42 @@ async fn dead_channel_fails_fast() {
     // The plain-text reason (ffmpeg's last error) is covered by hls::tests::last_error_skips_noise.
     assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
 }
+
+#[tokio::test]
+async fn a_channel_the_provider_refuses_says_why() {
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, ResponseTemplate};
+    let provider = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(407))
+        .mount(&provider)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(
+        dir.path(),
+        &format!("{}/live/u/p/1.ts", provider.uri()),
+        &guide(&[]),
+    );
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, chans) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/livetv/channels/{}/play", chans[0]["id"]))
+        .header("authorization", format!("Bearer {admin}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8_lossy(&body);
+    assert!(
+        body.contains("your provider won't play this channel on your account"),
+        "{body}"
+    );
+}
