@@ -1,5 +1,6 @@
 //! The Reelhouse media server.
 
+mod db;
 mod scan;
 
 fn main() {
