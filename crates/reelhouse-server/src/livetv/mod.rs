@@ -1,6 +1,7 @@
 //! IPTV sources (M3U and Xtream Codes), the XMLTV guide and the DVR.
 
 pub mod m3u;
+pub mod xmltv;
 
 /// A channel as a source lists it, before it is stored.
 #[derive(Debug, Clone, Default, PartialEq)]
