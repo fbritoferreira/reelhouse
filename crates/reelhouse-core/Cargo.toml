@@ -1,0 +1,8 @@
+[package]
+name = "reelhouse-core"
+description = "Client logic shared by every Reelhouse app: API client, session and playback state."
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true

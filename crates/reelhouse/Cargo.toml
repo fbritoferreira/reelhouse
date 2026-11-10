@@ -1,0 +1,10 @@
+[package]
+name = "reelhouse"
+description = "Open-source, Rust-native media server with Live TV/DVR and clients for every screen. Early development."
+readme = "../../README.md"
+keywords = ["media-server", "streaming", "iptv", "dvr", "dioxus"]
+categories = ["multimedia"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true

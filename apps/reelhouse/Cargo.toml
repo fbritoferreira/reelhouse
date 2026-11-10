@@ -1,0 +1,16 @@
+[package]
+name = "reelhouse-app"
+description = "The Reelhouse app for web, Android and Google TV."
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+dioxus = { workspace = true }
+
+[features]
+default = []
+web = ["dioxus/web"]
+mobile = ["dioxus/mobile"]
