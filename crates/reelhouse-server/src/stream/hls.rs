@@ -22,13 +22,16 @@ pub struct Sessions {
 
 impl Sessions {
     /// Starts ffmpeg for `input` (a file path or a stream URL) and returns the session id.
-    /// `start_s` > 0 begins the conversion that far in.
+    /// `start_s` > 0 begins the conversion that far in. With more than one entry in
+    /// `audio_languages` (one per soundtrack, in order), each soundtrack becomes its own HLS
+    /// rendition under a master playlist, so players can switch between them.
     pub fn start(
         &self,
         input: &str,
         method: PlaybackMethod,
         max_height: u32,
         start_s: f64,
+        audio_languages: &[Option<String>],
     ) -> Result<String> {
         let dir = tempfile::Builder::new()
             .prefix("reelhouse-hls-")
@@ -39,8 +42,15 @@ impl Sessions {
             // Before -i: a fast keyframe seek on the input.
             cmd.args(["-ss", &format!("{start_s:.3}")]);
         }
-        cmd.args(["-i", input])
-            .args(["-map", "0:v:0", "-map", "0:a:0?"]);
+        cmd.args(["-i", input]).args(["-map", "0:v:0"]);
+        let renditions = audio_languages.len() > 1;
+        if renditions {
+            for i in 0..audio_languages.len() {
+                cmd.args(["-map", &format!("0:a:{i}")]);
+            }
+        } else {
+            cmd.args(["-map", "0:a:0?"]);
+        }
         match method {
             PlaybackMethod::Transcode => {
                 let scale = format!("scale=-2:'min(ih,{max_height})'");
@@ -66,11 +76,20 @@ impl Sessions {
             "-hls_playlist_type",
             "event",
         ])
-        .args(["-hls_segment_type", "fmp4"])
-        .arg(dir.path().join("index.m3u8"))
-        // Kept beside the segments so a failed start can say why.
-        .stderr(std::fs::File::create(dir.path().join("ffmpeg.log"))?)
-        .kill_on_drop(true);
+        .args(["-hls_segment_type", "fmp4"]);
+        if renditions {
+            cmd.args(["-var_stream_map", &stream_map(audio_languages)])
+                .args(["-master_pl_name", "index.m3u8"])
+                .arg("-hls_segment_filename")
+                .arg(dir.path().join("s%v_%05d.m4s"))
+                .arg(dir.path().join("stream_%v.m3u8"));
+        } else {
+            cmd.arg(dir.path().join("index.m3u8"));
+        }
+        cmd
+            // Kept beside the segments so a failed start can say why.
+            .stderr(std::fs::File::create(dir.path().join("ffmpeg.log"))?)
+            .kill_on_drop(true);
         let child = cmd.spawn()?;
         let id = crate::auth::new_token();
         self.inner.lock().unwrap().insert(
@@ -161,6 +180,26 @@ impl Sessions {
     }
 }
 
+/// ffmpeg's `-var_stream_map`: the video, and each soundtrack as a rendition in one audio group,
+/// the first the default.
+fn stream_map(languages: &[Option<String>]) -> String {
+    let mut parts = vec!["v:0,agroup:aud".to_string()];
+    for (i, lang) in languages.iter().enumerate() {
+        let mut part = format!("a:{i},agroup:aud,name:a{i}");
+        if let Some(l) = lang
+            .as_deref()
+            .filter(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric()))
+        {
+            part.push_str(&format!(",language:{l}"));
+        }
+        if i == 0 {
+            part.push_str(",default:yes");
+        }
+        parts.push(part);
+    }
+    parts.join(" ")
+}
+
 /// The last meaningful line of ffmpeg's log, without the `[https @ 0x…]` prefix.
 fn last_error(log: &str) -> String {
     log.lines()
@@ -184,6 +223,16 @@ impl Drop for Session {
 #[cfg(test)]
 mod tests {
     use super::last_error;
+
+    #[test]
+    fn stream_map_names_each_soundtrack() {
+        let map = super::stream_map(&[Some("eng".into()), None, Some("pt br".into())]);
+        assert_eq!(
+            map,
+            "v:0,agroup:aud a:0,agroup:aud,name:a0,language:eng,default:yes \
+             a:1,agroup:aud,name:a1 a:2,agroup:aud,name:a2"
+        );
+    }
 
     #[test]
     fn last_error_skips_noise() {

@@ -233,3 +233,78 @@ async fn unknown_hls_session_is_404() {
     let (status, _, _) = get(&app, "/api/v1/hls/not-a-session/index.m3u8", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+/// A film with English and Spanish soundtracks.
+fn make_bilingual(path: &Path) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    assert!(
+        Command::new("ffmpeg")
+            .args(["-y", "-v", "error"])
+            .args(["-f", "lavfi", "-i", "testsrc=d=8:s=320x240"])
+            .args(["-f", "lavfi", "-i", "sine=f=440:d=8"])
+            .args(["-f", "lavfi", "-i", "sine=f=880:d=8"])
+            .args([
+                "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac"
+            ])
+            .args([
+                "-metadata:s:a:0",
+                "language=eng",
+                "-metadata:s:a:1",
+                "language=spa"
+            ])
+            .arg(path)
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[tokio::test]
+async fn every_soundtrack_reaches_hls() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    make_bilingual(&dir.path().join("Two (2020).mkv"));
+    let app = super::common::app_with(Config::for_tests(std::env::temp_dir())).await;
+    let token = admin_token(&app).await;
+    let (_, lib) = call(
+        &app,
+        "POST",
+        "/api/v1/libraries",
+        Some(&token),
+        Some(json!({"name": "m", "kind": "movies", "path": dir.path()})),
+    )
+    .await;
+    let lib = lib["id"].as_i64().unwrap();
+    call(
+        &app,
+        "POST",
+        &format!("/api/v1/libraries/{lib}/scan"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let (_, items) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/libraries/{lib}/items"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let id = items[0]["id"].as_i64().unwrap();
+    let url = start_hls(&app, &token, id).await;
+    // The master playlist appears once ffmpeg has started.
+    let mut master = String::new();
+    for _ in 0..50 {
+        let (status, _, body) = get(&app, &format!("{url}?token={token}"), None).await;
+        if status == StatusCode::OK {
+            master = String::from_utf8_lossy(&body).into_owned();
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(master.matches("TYPE=AUDIO").count(), 2, "{master}");
+    assert!(master.contains("LANGUAGE=\"spa\""), "{master}");
+}

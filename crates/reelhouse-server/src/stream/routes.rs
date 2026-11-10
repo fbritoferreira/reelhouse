@@ -71,7 +71,13 @@ pub async fn playback(
     let (url, start_s) = match method {
         PlaybackMethod::Direct => (format!("/api/v1/items/{id}/file"), 0.0),
         _ => {
-            let session = state.hls.start(&path, method, caps.max_height, start_s)?;
+            // A file whose soundtracks cannot be read still plays its first.
+            let audio = crate::scan::probe::audio_languages(&path)
+                .await
+                .unwrap_or_default();
+            let session = state
+                .hls
+                .start(&path, method, caps.max_height, start_s, &audio)?;
             (format!("/api/v1/hls/{session}/index.m3u8"), start_s)
         }
     };

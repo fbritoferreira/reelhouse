@@ -255,7 +255,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             async move {
                 loop {
                     futures_timer::Delay::new(Duration::from_millis(500)).await;
-                    if picking() {
+                    // Read while the picker is open, and now and then otherwise, so the button
+                    // shows once a title turns out to have choices.
+                    if picking() || tracks.peek().is_empty() {
                         let now = p.tracks();
                         if *tracks.peek() != now {
                             tracks.set(now);
@@ -423,7 +425,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     button { class: "player-skip", "aria-label": "Forward 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(SKIP_SECONDS) },
                         "+10"
                     }
-                    if cfg!(target_os = "android") {
+                    if cfg!(target_os = "android") || tracks().len() > 1 {
                         button {
                             class: if picking() { "player-tracks current" } else { "player-tracks" },
                             "aria-expanded": picking(),
@@ -493,6 +495,8 @@ fn TrackPicker(
                     }
                 }
             }
+            // Browsers get no subtitle renditions yet; Off alone would only confuse.
+            if !text.is_empty() || cfg!(target_os = "android") {
             section {
                 h3 { "Subtitles" }
                 button {
@@ -513,6 +517,7 @@ fn TrackPicker(
                         "{t.name()}"
                     }
                 }
+            }
             }
         }
     }
