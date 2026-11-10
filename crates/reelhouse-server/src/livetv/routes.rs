@@ -199,6 +199,8 @@ pub struct Window {
     start: Option<i64>,
     end: Option<i64>,
     group: Option<String>,
+    /// At most this many programmes per channel, earliest first (2 = now and next).
+    per_channel: Option<i64>,
 }
 
 #[derive(FromRow)]
@@ -223,13 +225,16 @@ pub async fn guide(
     let end = w.end.unwrap_or(start + 3 * 3600);
     let group = w.group.as_deref();
     let rows: Vec<ProgrammeRow> = sqlx::query_as(&format!(
-        "SELECT id, channel_id, start, stop, title, subtitle, description FROM programmes \
-         WHERE stop > ?2 AND start < ?3 \
-         AND channel_id IN (SELECT id FROM channels WHERE {IN_GROUP}) ORDER BY start"
+        "SELECT id, channel_id, start, stop, title, subtitle, description FROM ( \
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY start) AS n FROM programmes \
+           WHERE stop > ?2 AND start < ?3 \
+           AND channel_id IN (SELECT id FROM channels WHERE {IN_GROUP})) \
+         WHERE ?4 IS NULL OR n <= ?4 ORDER BY start"
     ))
     .bind(group)
     .bind(start)
     .bind(end)
+    .bind(w.per_channel)
     .fetch_all(&state.db)
     .await?;
     let mut out: Vec<GuideChannel> = all_channels(&state, group)

@@ -248,6 +248,39 @@ async fn removing_a_source_removes_its_channels() {
 }
 
 #[tokio::test]
+async fn guide_can_cap_programmes_per_channel() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = now();
+    let (m3u, epg) = write_source(
+        dir.path(),
+        "http://example.invalid/news.ts",
+        &guide(&[
+            (t - 60, t + 1800, "Now", "a"),
+            (t + 1800, t + 3600, "Next", "b"),
+            (t + 3600, t + 5400, "Later", "c"),
+        ]),
+    );
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, g) = call(
+        &app,
+        "GET",
+        "/api/v1/livetv/guide?group=UK&per_channel=2",
+        Some(&admin),
+        None,
+    )
+    .await;
+    let titles: Vec<&str> = g[0]["programmes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["Now", "Next"]);
+}
+
+#[tokio::test]
 async fn refresh_keeps_channel_ids() {
     let dir = tempfile::tempdir().unwrap();
     let (m3u, epg) = write_source(dir.path(), "http://example.invalid/n.ts", &guide(&[]));

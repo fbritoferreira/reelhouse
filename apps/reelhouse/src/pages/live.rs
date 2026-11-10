@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use dioxus::prelude::*;
-use reelhouse_api::{GuideChannel, Programme};
+use reelhouse_api::{ChannelGroup, GuideChannel, Programme};
 use reelhouse_core::timefmt::{clock, left};
 
 use crate::Route;
@@ -49,6 +49,60 @@ fn now_next(programmes: &[Programme], now: i64) -> (Option<&Programme>, Option<&
     (current, next)
 }
 
+/// How the group list is ordered; remembered on this device.
+#[derive(Clone, Copy, PartialEq)]
+enum GroupSort {
+    /// As the provider lists them.
+    Provider,
+    Name,
+    Size,
+}
+
+const SORT_KEY: &str = "reelhouse.live.sort";
+
+impl GroupSort {
+    const ALL: [GroupSort; 3] = [GroupSort::Provider, GroupSort::Name, GroupSort::Size];
+
+    fn label(self) -> &'static str {
+        match self {
+            GroupSort::Provider => "Provider order",
+            GroupSort::Name => "A to Z",
+            GroupSort::Size => "Most channels",
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            GroupSort::Provider => "provider",
+            GroupSort::Name => "name",
+            GroupSort::Size => "size",
+        }
+    }
+
+    fn saved() -> Self {
+        let saved = crate::session::load(SORT_KEY);
+        Self::ALL
+            .into_iter()
+            .find(|s| Some(s.id()) == saved.as_deref())
+            .unwrap_or(GroupSort::Provider)
+    }
+}
+
+/// Orders `groups` (which arrive in provider order); the ungrouped stay last.
+fn sort_groups(mut groups: Vec<ChannelGroup>, by: GroupSort) -> Vec<ChannelGroup> {
+    match by {
+        GroupSort::Provider => {}
+        GroupSort::Name => groups.sort_by_key(|g| {
+            (
+                g.name.is_none(),
+                g.name.clone().unwrap_or_default().to_lowercase(),
+            )
+        }),
+        GroupSort::Size => groups.sort_by_key(|g| (g.name.is_none(), -g.channels)),
+    }
+    groups
+}
+
 fn group_label(name: &Option<String>) -> String {
     name.clone().unwrap_or_else(|| "Other channels".into())
 }
@@ -57,6 +111,7 @@ fn group_label(name: &Option<String>) -> String {
 pub fn LiveTv() -> Element {
     let groups = use_resource(|| async move { client().channel_groups().await });
     let mut chosen = use_signal(|| None::<String>);
+    let mut sort = use_signal(GroupSort::saved);
     // Counts focus moves, so a pending group switch can tell it has been overtaken.
     let mut focused = use_signal(|| 0u64);
     let time = use_clock();
@@ -67,7 +122,7 @@ pub fn LiveTv() -> Element {
         Some(Err(e)) => {
             return rsx! { div { class: "page page-top", LoadError { error: describe(e) } } };
         }
-        Some(Ok(list)) => list.clone(),
+        Some(Ok(list)) => sort_groups(list.clone(), sort()),
     };
     if list.is_empty() {
         return rsx! {
@@ -83,9 +138,24 @@ pub fn LiveTv() -> Element {
     let total: i64 = list.iter().map(|g| g.channels).sum();
     rsx! {
         div { class: "page page-top live",
-            header { class: "page-head",
+            header { class: "page-head live-head",
                 h1 { "Live TV" }
                 p { class: "quiet", "{total} channels" }
+                div { class: "live-sort", role: "radiogroup", "aria-label": "Sort groups",
+                    for by in GroupSort::ALL {
+                        button {
+                            key: "{by.id()}",
+                            role: "radio",
+                            class: if sort() == by { "live-sort-option current" } else { "live-sort-option" },
+                            "aria-checked": sort() == by,
+                            onclick: move |_| {
+                                sort.set(by);
+                                crate::session::save(SORT_KEY, Some(by.id()));
+                            },
+                            "{by.label()}"
+                        }
+                    }
+                }
             }
             div { class: "live-body",
                 nav { class: "live-groups", "aria-label": "Channel groups",
@@ -132,26 +202,57 @@ fn GroupGuide(group: String, time: Signal<Clock>) -> Element {
     let guide = use_resource(use_reactive!(|group| async move {
         client().guide(&group).await
     }));
+    // Rows are drawn a page at a time: reaching the last few draws the next page, so a group of
+    // a thousand channels costs no more to open than one of forty.
+    let mut shown = use_signal(|| PAGE);
+    use_effect(use_reactive!(|group| {
+        let _ = &group;
+        shown.set(PAGE);
+    }));
     match &*guide.read() {
         None => rsx! { p { class: "quiet live-channels", "Loading the guide" } },
         Some(Err(e)) => rsx! { div { class: "live-channels", LoadError { error: describe(e) } } },
-        Some(Ok(channels)) => rsx! {
-            ol { class: "live-channels",
-                for c in channels.clone() {
-                    ChannelRow { key: "{c.channel.id}", entry: c, group: group.clone(), time: time() }
+        Some(Ok(channels)) => {
+            let total = channels.len();
+            let limit = shown().min(total);
+            rsx! {
+                ol { class: "live-channels",
+                    for (i, c) in channels[..limit].iter().cloned().enumerate() {
+                        ChannelRow {
+                            key: "{c.channel.id}",
+                            entry: c,
+                            group: group.clone(),
+                            time: time(),
+                            on_focus: move |_| {
+                                if i + 5 >= shown() {
+                                    shown += PAGE;
+                                }
+                            },
+                        }
+                    }
+                    if limit < total {
+                        li {
+                            button { class: "secondary live-more", onclick: move |_| shown += PAGE,
+                                "Show {(total - limit).min(PAGE)} more of {total - limit}"
+                            }
+                        }
+                    }
                 }
             }
-        },
+        }
     }
 }
 
+/// Channel rows drawn at a time.
+const PAGE: usize = 40;
+
 #[component]
-fn ChannelRow(entry: GuideChannel, group: String, time: Clock) -> Element {
+fn ChannelRow(entry: GuideChannel, group: String, time: Clock, on_focus: EventHandler) -> Element {
     let c = &entry.channel;
     let (current, next) = now_next(&entry.programmes, time.now);
     let number = c.number.map(|n| n.to_string()).unwrap_or_default();
     rsx! {
-        li {
+        li { onfocusin: move |_| on_focus.call(()),
             Link { class: "channel", to: Route::Watch { id: c.id, group },
                 span { class: "channel-number", "{number}" }
                 span { class: "channel-logo",
@@ -350,6 +451,31 @@ mod tests {
             subtitle: None,
             description: None,
         }
+    }
+
+    fn group(name: Option<&str>, channels: i64) -> ChannelGroup {
+        ChannelGroup {
+            name: name.map(str::to_string),
+            channels,
+        }
+    }
+
+    #[test]
+    fn sorts_groups_keeping_the_ungrouped_last() {
+        let groups = vec![
+            group(Some("UK"), 5),
+            group(None, 50),
+            group(Some("africa"), 9),
+        ];
+        let names = |by| {
+            sort_groups(groups.clone(), by)
+                .into_iter()
+                .map(|g| g.name.unwrap_or_default())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(GroupSort::Provider), ["UK", "", "africa"]);
+        assert_eq!(names(GroupSort::Name), ["africa", "UK", ""]);
+        assert_eq!(names(GroupSort::Size), ["africa", "UK", ""]);
     }
 
     #[test]

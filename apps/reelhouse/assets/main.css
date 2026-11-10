@@ -542,3 +542,10 @@ html.tv {
 
 .confirm-remove { display: inline-flex; align-items: center; gap: 0.5rem; }
 button.danger { background: #c2412d; color: var(--text); }
+
+.live-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.25rem; }
+.live-sort { display: flex; gap: 0.35rem; margin-left: auto; }
+.live-sort-option { background: transparent; color: var(--muted); border: 1px solid var(--line); font-size: var(--t-small); font-weight: 500; padding: 0.4em 0.9em; }
+.live-sort-option.current { background: var(--text); color: var(--curtain-deep); border-color: var(--text); }
+.tv .live-sort-option { font-size: 0.75rem; }
+.live-more { margin: 0.75rem 0 0 4.2em; font-size: var(--t-small); }
