@@ -79,6 +79,23 @@ pub async fn create(
     ))
 }
 
+/// Forgets a library and everything scanned from it (items, artwork, watch progress). The media
+/// files on disk are never touched.
+pub async fn remove(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    let done = sqlx::query("DELETE FROM libraries WHERE id = ?")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn scan(
     State(state): State<AppState>,
     _admin: AdminUser,

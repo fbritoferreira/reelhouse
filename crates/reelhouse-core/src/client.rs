@@ -152,6 +152,19 @@ impl Client {
         self.get(&format!("/api/v1/items/{id}/children")).await
     }
 
+    pub async fn delete_library(&self, id: i64) -> Result<(), ClientError> {
+        self.send_empty(self.req(reqwest::Method::DELETE, &format!("/api/v1/libraries/{id}")))
+            .await
+    }
+
+    pub async fn delete_tv_source(&self, id: i64) -> Result<(), ClientError> {
+        self.send_empty(self.req(
+            reqwest::Method::DELETE,
+            &format!("/api/v1/livetv/sources/{id}"),
+        ))
+        .await
+    }
+
     pub async fn tv_sources(&self) -> Result<Vec<TvSource>, ClientError> {
         self.get("/api/v1/livetv/sources").await
     }

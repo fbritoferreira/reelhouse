@@ -77,7 +77,7 @@ pub fn Admin() -> Element {
                     Some(Ok(list)) => rsx! {
                         ul { class: "list",
                             for lib in list.clone() {
-                                LibraryRow { key: "{lib.id}", lib, status }
+                                LibraryRow { key: "{lib.id}", lib, status, on_removed: move |_| libs.restart() }
                             }
                         }
                     },
@@ -139,7 +139,7 @@ pub fn Admin() -> Element {
 }
 
 #[component]
-fn LibraryRow(lib: Library, status: Signal<Option<String>>) -> Element {
+fn LibraryRow(lib: Library, status: Signal<Option<String>>, on_removed: EventHandler) -> Element {
     let id = lib.id;
     let mut count =
         use_resource(move || async move { client().library_items(id).await.map(|i| i.len()) });
@@ -176,6 +176,24 @@ fn LibraryRow(lib: Library, status: Signal<Option<String>>) -> Element {
                     }
                 },
                 if scanning() { "Scanning…" } else { "Scan" }
+            }
+            ConfirmRemove {
+                what: lib.name.clone(),
+                on_confirm: {
+                    let name = lib.name.clone();
+                    move |_| {
+                        let name = name.clone();
+                        spawn(async move {
+                            match client().delete_library(id).await {
+                                Ok(()) => {
+                                    status.set(Some(format!("Removed {name}. Its files are untouched.")));
+                                    on_removed.call(());
+                                }
+                                Err(e) => status.set(Some(describe(&e))),
+                            }
+                        });
+                    }
+                },
             }
         }
     }
@@ -231,7 +249,7 @@ fn TvSources(status: Signal<Option<String>>) -> Element {
                 Some(Ok(list)) => rsx! {
                     ul { class: "list",
                         for src in list.clone() {
-                            SourceRow { key: "{src.id}", src, status }
+                            SourceRow { key: "{src.id}", src, status, on_removed: move |_| sources.restart() }
                         }
                     }
                 },
@@ -285,7 +303,7 @@ fn refresh_message(
 }
 
 #[component]
-fn SourceRow(src: TvSource, status: Signal<Option<String>>) -> Element {
+fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHandler) -> Element {
     let mut refreshing = use_signal(|| false);
     let id = src.id;
     let name = src.name.clone();
@@ -310,6 +328,48 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>) -> Element {
                 },
                 if refreshing() { "Refreshing…" } else { "Refresh" }
             }
+            ConfirmRemove {
+                what: src.name.clone(),
+                on_confirm: {
+                    let name = src.name.clone();
+                    move |_| {
+                        let name = name.clone();
+                        spawn(async move {
+                            match client().delete_tv_source(id).await {
+                                Ok(()) => {
+                                    status.set(Some(format!("Removed {name} and its channels.")));
+                                    on_removed.call(());
+                                }
+                                Err(e) => status.set(Some(describe(&e))),
+                            }
+                        });
+                    }
+                },
+            }
+        }
+    }
+}
+
+/// Remove, then a second press to confirm, in place: no browser dialog.
+#[component]
+fn ConfirmRemove(what: String, on_confirm: EventHandler) -> Element {
+    let mut asking = use_signal(|| false);
+    rsx! {
+        if asking() {
+            span { class: "confirm-remove",
+                span { class: "quiet", "Remove {what}?" }
+                button {
+                    class: "danger",
+                    onclick: move |_| {
+                        asking.set(false);
+                        on_confirm.call(());
+                    },
+                    "Remove"
+                }
+                button { class: "secondary", onclick: move |_| asking.set(false), "Keep" }
+            }
+        } else {
+            button { class: "secondary", onclick: move |_| asking.set(true), "Remove" }
         }
     }
 }
