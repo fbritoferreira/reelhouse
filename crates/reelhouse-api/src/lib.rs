@@ -161,6 +161,43 @@ pub struct NewTvSource {
     pub epg_url: Option<String>,
 }
 
+/// Runs a job gets before it is marked failed: the first and three retries.
+pub const JOB_MAX_ATTEMPTS: i64 = 4;
+
+/// Background work the server queues: scanning a library, refreshing a Live TV source.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JobKind {
+    ScanLibrary,
+    RefreshSource,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JobStatus {
+    Queued,
+    Running,
+    Done,
+    /// Gave up after its retries.
+    Failed,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Job {
+    pub id: i64,
+    pub kind: JobKind,
+    /// The library or source the job works on.
+    pub target_id: i64,
+    pub status: JobStatus,
+    /// Runs so far, including the one under way.
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    /// The `ScanReport` or `RefreshReport` once done.
+    pub result: Option<serde_json::Value>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct RefreshReport {
     pub channels: u64,

@@ -69,6 +69,17 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         vod = m3u::parse_vod(&text);
         (m3u::parse(&text), epg)
     };
+    // Providers under load sometimes send a playlist cut short. Replacing the list with it would
+    // drop most channels (and the choices made about them), so refuse and let the job retry.
+    let (before,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channels WHERE source_id = ?")
+        .bind(source_id)
+        .fetch_one(db)
+        .await?;
+    anyhow::ensure!(
+        before < 10 || channels.len() as i64 * 2 >= before,
+        "the source sent {} channels, against {before} last time; keeping the old list",
+        channels.len()
+    );
     let guide = match &epg_url {
         Some(url) => xmltv::parse(
             &fetch_text(url)

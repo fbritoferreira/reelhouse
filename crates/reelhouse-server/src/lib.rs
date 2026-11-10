@@ -7,6 +7,7 @@ pub mod db;
 pub mod device;
 pub mod error;
 pub mod import;
+pub mod jobs;
 pub mod libraries;
 pub mod livetv;
 pub mod metadata;

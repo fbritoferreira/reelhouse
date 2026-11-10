@@ -134,7 +134,8 @@ impl Client {
         self.post("/api/v1/libraries", lib).await
     }
 
-    pub async fn scan(&self, library: i64) -> Result<ScanReport, ClientError> {
+    /// Queues a scan; the job's result is the `ScanReport`.
+    pub async fn scan(&self, library: i64) -> Result<Job, ClientError> {
         self.post(&format!("/api/v1/libraries/{library}/scan"), &())
             .await
     }
@@ -182,6 +183,11 @@ impl Client {
         .await
     }
 
+    /// The 50 most recent background jobs, newest first.
+    pub async fn jobs(&self) -> Result<Vec<Job>, ClientError> {
+        self.get("/api/v1/jobs").await
+    }
+
     pub async fn tv_sources(&self) -> Result<Vec<TvSource>, ClientError> {
         self.get("/api/v1/livetv/sources").await
     }
@@ -190,7 +196,8 @@ impl Client {
         self.post("/api/v1/livetv/sources", source).await
     }
 
-    pub async fn refresh_tv_source(&self, id: i64) -> Result<RefreshReport, ClientError> {
+    /// Queues a refresh; the job's result is the `RefreshReport`.
+    pub async fn refresh_tv_source(&self, id: i64) -> Result<Job, ClientError> {
         self.post(&format!("/api/v1/livetv/sources/{id}/refresh"), &())
             .await
     }

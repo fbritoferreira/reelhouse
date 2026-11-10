@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use reelhouse_api::{
-    Library, LibraryKind, NewLibrary, NewTvSource, NewUser, TvSource, TvSourceKind,
+    JobKind, JobStatus, Library, LibraryKind, NewLibrary, NewTvSource, NewUser, TvSource,
+    TvSourceKind,
 };
 
 use crate::session::client;
@@ -28,13 +29,14 @@ pub fn Admin() -> Element {
             Ok(lib) => {
                 lib_name.set(String::new());
                 lib_path.set(String::new());
-                status.set(Some(format!("Added {}. Scanning it now.", lib.name)));
                 libs.restart();
                 match client().scan(lib.id).await {
-                    Ok(r) => status.set(Some(format!("{}: {} titles added.", lib.name, r.added))),
+                    Ok(_) => status.set(Some(format!(
+                        "Added {}. Its scan is under Activity.",
+                        lib.name
+                    ))),
                     Err(e) => status.set(Some(describe(&e))),
                 }
-                libs.restart();
             }
             Err(e) => status.set(Some(describe(&e))),
         }
@@ -129,6 +131,7 @@ pub fn Admin() -> Element {
                 }
             }
             TvSources { status }
+            Activity {}
             p { class: "quiet credit",
                 "Metadata and artwork from "
                 a { href: "https://www.themoviedb.org", target: "_blank", rel: "noopener", "TMDB" }
@@ -168,7 +171,7 @@ fn LibraryRow(lib: Library, status: Signal<Option<String>>, on_removed: EventHan
                     async move {
                         scanning.set(true);
                         match client().scan(id).await {
-                            Ok(r) => status.set(Some(format!("{name}: {} added, {} removed.", r.added, r.removed))),
+                            Ok(_) => status.set(Some(format!("Scanning {name}. Progress is under Activity."))),
                             Err(e) => status.set(Some(describe(&e))),
                         }
                         scanning.set(false);
@@ -227,10 +230,6 @@ fn TvSources(status: Signal<Option<String>>) -> Element {
                 for mut field in [name, url, username, password, epg] {
                     field.set(String::new());
                 }
-                status.set(Some(format!(
-                    "Added {}. Loading its channels and guide now.",
-                    src.name
-                )));
                 sources.restart();
                 status.set(Some(refresh_message(
                     &src.name,
@@ -291,14 +290,118 @@ fn TvSources(status: Signal<Option<String>>) -> Element {
 
 fn refresh_message(
     name: &str,
-    r: Result<reelhouse_api::RefreshReport, reelhouse_core::ClientError>,
+    r: Result<reelhouse_api::Job, reelhouse_core::ClientError>,
 ) -> String {
     match r {
-        Ok(r) => format!(
-            "{name}: {} channels, {} guide entries.",
-            r.channels, r.programmes
-        ),
+        Ok(_) => format!("Loading {name}'s channels and guide. Progress is under Activity."),
         Err(e) => format!("{name}: {}", describe(&e)),
+    }
+}
+
+/// Scans and refreshes as they queue, run, retry and finish.
+#[component]
+fn Activity() -> Element {
+    let mut jobs = use_resource(|| async move { client().jobs().await });
+    let libs = use_resource(|| async move { client().libraries().await.unwrap_or_default() });
+    let sources = use_resource(|| async move { client().tv_sources().await.unwrap_or_default() });
+    // Poll while Manage is open, so jobs queued from any button (or another browser) show up.
+    use_future(move || async move {
+        loop {
+            futures_timer::Delay::new(std::time::Duration::from_secs(3)).await;
+            jobs.restart();
+        }
+    });
+    let list = match &*jobs.read() {
+        Some(Ok(list)) => list.iter().take(8).cloned().collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    let name_of = |j: &reelhouse_api::Job| -> String {
+        match j.kind {
+            JobKind::ScanLibrary => libs
+                .read()
+                .as_ref()
+                .and_then(|l| {
+                    l.iter()
+                        .find(|l| l.id == j.target_id)
+                        .map(|l| l.name.clone())
+                })
+                .unwrap_or_else(|| "a removed library".into()),
+            JobKind::RefreshSource => sources
+                .read()
+                .as_ref()
+                .and_then(|s| {
+                    s.iter()
+                        .find(|s| s.id == j.target_id)
+                        .map(|s| s.name.clone())
+                })
+                .unwrap_or_else(|| "a removed source".into()),
+        }
+    };
+    rsx! {
+        section { class: "panel",
+            h2 { "Activity" }
+            if list.is_empty() {
+                p { class: "quiet", "Scans and Live TV refreshes appear here as they run." }
+            }
+            ul { class: "list jobs",
+                for j in list {
+                    {
+                        let what = match j.kind {
+                            JobKind::ScanLibrary => format!("Scan {}", name_of(&j)),
+                            JobKind::RefreshSource => format!("Refresh {}", name_of(&j)),
+                        };
+                        let (state, class) = job_state(&j);
+                        rsx! {
+                            li { key: "{j.id}", class: "job {class}",
+                                span { class: "job-dot", "aria-hidden": "true" }
+                                span { class: "list-name", "{what}" }
+                                span { class: "quiet job-state", "{state}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// What a job is doing, in words, and a class for its dot.
+fn job_state(j: &reelhouse_api::Job) -> (String, &'static str) {
+    let tries = reelhouse_api::JOB_MAX_ATTEMPTS;
+    match j.status {
+        JobStatus::Queued if j.attempts > 0 => (
+            format!(
+                "Failed, trying again ({} of {tries}): {}",
+                j.attempts + 1,
+                j.last_error.clone().unwrap_or_default()
+            ),
+            "retrying",
+        ),
+        JobStatus::Queued => ("Waiting".into(), "waiting"),
+        JobStatus::Running if j.attempts > 1 => {
+            (format!("Running, try {} of {tries}", j.attempts), "running")
+        }
+        JobStatus::Running => ("Running".into(), "running"),
+        JobStatus::Done => (
+            match (j.kind, &j.result) {
+                (JobKind::ScanLibrary, Some(r)) => {
+                    format!("{} added, {} removed", r["added"], r["removed"])
+                }
+                (JobKind::RefreshSource, Some(r)) => format!(
+                    "{} channels, {} guide entries, {} on demand",
+                    r["channels"], r["programmes"], r["on_demand"]
+                ),
+                _ => "Done".into(),
+            },
+            "done",
+        ),
+        JobStatus::Failed => (
+            format!(
+                "Failed after {tries} tries: {}",
+                j.last_error.clone().unwrap_or_default()
+            ),
+            "failed",
+        ),
     }
 }
 

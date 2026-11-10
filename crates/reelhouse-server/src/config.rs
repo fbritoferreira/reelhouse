@@ -35,6 +35,8 @@ pub struct Config {
     pub hls_idle: Duration,
     /// How often the DVR checks its schedule; `None` leaves the DVR off.
     pub dvr_tick: Option<Duration>,
+    /// Wait before a failed job's first retry; it doubles for each retry after.
+    pub job_backoff: Duration,
 }
 
 impl Config {
@@ -53,6 +55,7 @@ impl Config {
             web_dir: std::env::var("REELHOUSE_WEB_DIR").ok().map(PathBuf::from),
             hls_idle: Duration::from_secs(60),
             dvr_tick: Some(Duration::from_secs(10)),
+            job_backoff: Duration::from_secs(30),
         })
     }
 
@@ -66,6 +69,7 @@ impl Config {
             web_dir: None,
             hls_idle: Duration::from_secs(60),
             dvr_tick: None,
+            job_backoff: Duration::from_millis(10),
         }
     }
 }
