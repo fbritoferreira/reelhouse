@@ -19,12 +19,12 @@ fn storage() -> Option<web_sys::Storage> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn load(key: &str) -> Option<String> {
+pub(crate) fn load(key: &str) -> Option<String> {
     storage()?.get_item(key).ok()?
 }
 
 #[cfg(target_arch = "wasm32")]
-fn save(key: &str, value: Option<&str>) {
+pub(crate) fn save(key: &str, value: Option<&str>) {
     if let Some(s) = storage() {
         let _ = match value {
             Some(v) => s.set_item(key, v),
@@ -44,14 +44,14 @@ fn key_path(key: &str) -> Option<std::path::PathBuf> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load(key: &str) -> Option<String> {
+pub(crate) fn load(key: &str) -> Option<String> {
     std::fs::read_to_string(key_path(key)?)
         .ok()
         .filter(|s| !s.is_empty())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save(key: &str, value: Option<&str>) {
+pub(crate) fn save(key: &str, value: Option<&str>) {
     if let Some(path) = key_path(key) {
         let _ = match value {
             Some(v) => std::fs::write(path, v),

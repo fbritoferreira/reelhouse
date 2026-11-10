@@ -182,11 +182,11 @@ impl Client {
         self.get("/api/v1/livetv/groups").await
     }
 
-    /// One group's channels with what is on for the next few hours; `""` asks for the ungrouped.
+    /// One group's channels with what is on now and next; `""` asks for the ungrouped.
     pub async fn guide(&self, group: &str) -> Result<Vec<GuideChannel>, ClientError> {
         self.send(
             self.req(reqwest::Method::GET, "/api/v1/livetv/guide")
-                .query(&[("group", group)]),
+                .query(&[("group", group), ("per_channel", "2")]),
         )
         .await
     }
