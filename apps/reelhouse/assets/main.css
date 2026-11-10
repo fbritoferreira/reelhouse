@@ -383,18 +383,42 @@ select {
 
 .player { position: fixed; inset: 0; background: black; }
 .video { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; }
-.player-top { position: absolute; top: 1.25rem; left: var(--gutter); }
-.player-controls {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 4rem var(--gutter) 2rem;
-  background: linear-gradient(to top, rgba(21, 13, 23, 0.92), transparent);
+/* The picture stays the subject: what is playing sits top left over a soft scrim, the controls
+   gather at the bottom over another, and both fade once playback runs undisturbed. */
+.player-top {
+  position: absolute; inset: 0 0 auto; display: flex; align-items: flex-start; gap: 1rem;
+  padding: 1.5rem var(--gutter) 5rem;
+  background: linear-gradient(to bottom, rgba(21, 13, 23, 0.85), transparent);
 }
-.player-row { display: flex; align-items: center; gap: 1.25rem; }
-.time { font-variant-numeric: tabular-nums; color: var(--muted); }
-.seek { width: 100%; margin-top: 1rem; accent-color: var(--bulb); }
+.player-back { width: 2.75rem; height: 2.75rem; padding: 0; border-radius: 50%; background: rgba(53, 37, 58, 0.72); flex: none; }
+.chevron-left { width: 0.6rem; height: 0.6rem; border-left: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: translateX(2px) rotate(45deg); }
+.player-heading p { margin: 0; }
+.player-title { font-family: var(--display); font-weight: 700; font-size: var(--t-h2); line-height: 1.15; }
+.player-sub { color: var(--muted); }
+.player-controls {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; gap: 1rem;
+  padding: 6rem var(--gutter) 2.25rem;
+  background: linear-gradient(to top, rgba(21, 13, 23, 0.94), transparent);
+}
+.player-scrub { display: flex; align-items: center; gap: 1rem; }
+.player-row { display: flex; align-items: center; justify-content: center; gap: 1rem; }
+.time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--t-small); min-width: 4.5ch; }
+.seek { flex: 1; margin: 0; accent-color: var(--bulb); }
+.player-skip { width: 3.2rem; height: 3.2rem; padding: 0; border-radius: 50%; font-variant-numeric: tabular-nums; background: rgba(53, 37, 58, 0.72); }
+.player-toggle { min-width: 9rem; font-size: var(--t-lead); padding: 0.7em 1.6em; }
+.pause-icon { width: 0.7em; height: 0.85em; border-left: 0.24em solid currentColor; border-right: 0.24em solid currentColor; }
+.up-next {
+  position: absolute; right: var(--gutter); bottom: 9rem; display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-end;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .up-next { animation: menu-in 300ms ease-out; }
+}
+.tv .player-top { padding: 1rem var(--gutter) 3rem; }
+.tv .player-back { width: 2.2rem; height: 2.2rem; }
+.tv .player-skip { width: 2.6rem; height: 2.6rem; font-size: 0.8rem; }
+.tv .player-toggle { min-width: 7rem; font-size: 0.875rem; }
+.tv .player-controls { padding: 4rem var(--gutter) 1.5rem; gap: 0.75rem; }
 
 /* Native players draw behind the page, so the page itself must be see-through while playing. */
 .video.native { background: transparent; }

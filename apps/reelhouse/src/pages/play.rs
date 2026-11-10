@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use reelhouse_api::Progress;
 use reelhouse_core::timefmt::{format_time, needs_restart, seek_fraction};
 
+use crate::Route;
 use crate::player::{Player, capabilities};
 use crate::session::client;
 use crate::widgets::describe;
@@ -68,6 +69,10 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     // from here, and can only seek within what it has converted so far.
     let mut offset = use_signal(|| 0.0);
     let mut converting = use_signal(|| false);
+    // What is playing, for the top of the screen: the show or film, then the episode.
+    let mut heading = use_signal(|| None::<(String, String)>);
+    // The episode after this one, offered as the credits roll.
+    let mut up_next = use_signal(|| None::<(Route, String)>);
     let nav = navigator();
 
     let p = player.clone();
@@ -80,13 +85,37 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             // titles keep no position yet.
             let (mut known, resume_at) = if on_demand {
                 match c.vod_title(id).await {
-                    Ok(t) => (
-                        t.duration_s.unwrap_or(0.0),
-                        t.progress
-                            .filter(|p| !p.played)
-                            .map(|p| p.position_s)
-                            .unwrap_or(0.0),
-                    ),
+                    Ok(t) => {
+                        let code = match (t.season_no, t.episode_no) {
+                            (Some(s), Some(e)) => format!("S{s} E{e}  {}", t.title),
+                            _ => String::new(),
+                        };
+                        heading.set(Some((
+                            t.show_title.clone().unwrap_or(t.title.clone()),
+                            code,
+                        )));
+                        if let Some(show) = t.show_title.clone() {
+                            let eps = c.vod_episodes(&show).await.unwrap_or_default();
+                            if let Some(n) = eps
+                                .iter()
+                                .position(|e| e.id == id)
+                                .and_then(|i| eps.get(i + 1))
+                            {
+                                let label = match (n.season_no, n.episode_no) {
+                                    (Some(s), Some(e)) => format!("S{s} E{e}  {}", n.title),
+                                    _ => n.title.clone(),
+                                };
+                                up_next.set(Some((Route::PlayVod { id: n.id }, label)));
+                            }
+                        }
+                        (
+                            t.duration_s.unwrap_or(0.0),
+                            t.progress
+                                .filter(|p| !p.played)
+                                .map(|p| p.position_s)
+                                .unwrap_or(0.0),
+                        )
+                    }
                     Err(_) => (0.0, 0.0),
                 }
             } else {
@@ -99,9 +128,40 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 // the full length.
                 let resume = item
                     .progress
+                    .as_ref()
                     .filter(|pr| !pr.played)
                     .map(|pr| pr.position_s)
                     .unwrap_or(0.0);
+                heading.set(Some(
+                    match (&item.show_title, item.season_no, item.episode_no) {
+                        (Some(show), Some(s), Some(e)) => (
+                            show.clone(),
+                            format!("S{s} E{e}  {}", crate::widgets::episode_name(&item)),
+                        ),
+                        _ => (
+                            item.title.clone(),
+                            item.year.map(|y| y.to_string()).unwrap_or_default(),
+                        ),
+                    },
+                ));
+                if let (reelhouse_api::ItemKind::Episode, Some(season)) =
+                    (item.kind, item.parent_id)
+                {
+                    let eps = c.children(season).await.unwrap_or_default();
+                    if let Some(n) = eps
+                        .iter()
+                        .position(|e| e.id == id)
+                        .and_then(|i| eps.get(i + 1))
+                    {
+                        let label = match (n.season_no, n.episode_no) {
+                            (Some(s), Some(e)) => {
+                                format!("S{s} E{e}  {}", crate::widgets::episode_name(n))
+                            }
+                            _ => n.title.clone(),
+                        };
+                        up_next.set(Some((Route::Play { id: n.id }, label)));
+                    }
+                }
                 (item.duration_s.unwrap_or(0.0), resume)
             };
             match &local {
@@ -248,6 +308,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
         0.0
     };
     let leave = save_and_leave.clone();
+    // The last two minutes of an episode with another after it.
+    let near_end = duration() > 0.0 && duration() - position() < 120.0;
 
     rsx! {
         div {
@@ -257,24 +319,58 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             onmousemove: move |_| quiet.set(0),
             {crate::player::surface()}
             div { class: "player-top",
-                button { onclick: move |_| leave(), "Back" }
+                button { class: "player-back", "aria-label": "Back", onclick: move |_| leave(),
+                    span { class: "chevron-left", "aria-hidden": "true" }
+                }
+                if let Some((title, sub)) = heading() {
+                    div { class: "player-heading",
+                        p { class: "player-title", "{title}" }
+                        if !sub.is_empty() {
+                            p { class: "player-sub", "{sub}" }
+                        }
+                    }
+                }
+            }
+            if let Some((to, label)) = up_next().filter(|_| near_end) {
+                div { class: "up-next",
+                    span { class: "quiet", "Up next" }
+                    Link { class: "primary", to, "{label}" }
+                }
             }
             div { class: "player-controls",
                 if let Some(msg) = error() {
                     p { class: "notice", "Playback stopped: {msg}" }
                 }
-                div { class: "player-row",
-                    button { class: "primary", autofocus: true, onclick: toggle, if playing() { "Pause" } else { "Play" } }
-                    span { class: "time", "{format_time(position())} / {format_time(duration())}" }
+                div { class: "player-scrub",
+                    span { class: "time", "{format_time(position())}" }
+                    input {
+                        r#type: "range",
+                        class: "seek",
+                        "aria-label": "Position",
+                        min: 0,
+                        max: 1000,
+                        value: (fraction * 1000.0).round(),
+                        style: "--played: {fraction * 100.0}%",
+                        oninput: seek_to,
+                    }
+                    span { class: "time", "-{format_time((duration() - position()).max(0.0))}" }
                 }
-                input {
-                    r#type: "range",
-                    class: "seek",
-                    "aria-label": "Position",
-                    min: 0,
-                    max: 1000,
-                    value: (fraction * 1000.0).round(),
-                    oninput: seek_to,
+                div { class: "player-row",
+                    button { class: "player-skip", "aria-label": "Back 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(-SKIP_SECONDS) },
+                        "−10"
+                    }
+                    button { class: "primary player-toggle", autofocus: true, onclick: toggle,
+                        if playing() {
+                            span { class: "pause-icon", "aria-hidden": "true" }
+                            "Pause"
+                        } else {
+                            span { class: "play-icon", "aria-hidden": "true" }
+                            "Play"
+                        }
+                    }
+                    button { class: "player-skip", "aria-label": "Forward 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(SKIP_SECONDS) },
+                        "+10"
+                    }
                 }
             }
         }
