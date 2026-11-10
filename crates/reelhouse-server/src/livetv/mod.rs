@@ -3,6 +3,7 @@
 pub mod dvr;
 pub mod m3u;
 pub mod routes;
+pub mod vod;
 pub mod xmltv;
 pub mod xtream;
 
@@ -51,6 +52,7 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
     .bind(source_id)
     .fetch_one(db)
     .await?;
+    let mut vod = Vec::new();
     let (channels, epg_url) = if src.kind == "xtream" {
         let xc = Xtream::new(
             &src.url,
@@ -64,6 +66,7 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
             .await
             .with_context(|| format!("reading {}", src.url))?;
         let epg = src.epg_url.or_else(|| m3u::epg_url(&text));
+        vod = m3u::parse_vod(&text);
         (m3u::parse(&text), epg)
     };
     let guide = match &epg_url {
@@ -145,9 +148,37 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
             programmes += 1;
         }
     }
+    // On-demand titles carry no state of their own (progress lives elsewhere), so they are
+    // replaced wholesale.
+    sqlx::query("DELETE FROM vod_items WHERE source_id = ?")
+        .bind(source_id)
+        .execute(&mut *tx)
+        .await?;
+    for v in &vod {
+        sqlx::query(
+            "INSERT OR IGNORE INTO vod_items (source_id, kind, title, year, show_title, season_no, episode_no, \
+             poster_url, group_title, stream_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(source_id)
+        .bind(match v.kind {
+            m3u::VodKind::Movie => "movie",
+            m3u::VodKind::Episode => "episode",
+        })
+        .bind(&v.title)
+        .bind(v.year)
+        .bind(&v.show)
+        .bind(v.season)
+        .bind(v.episode)
+        .bind(&v.poster_url)
+        .bind(&v.group_title)
+        .bind(&v.stream_url)
+        .execute(&mut *tx)
+        .await?;
+    }
     tx.commit().await?;
     Ok(RefreshReport {
         channels: ids.len() as u64,
         programmes,
+        on_demand: vod.len() as u64,
     })
 }

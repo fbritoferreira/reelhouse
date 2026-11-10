@@ -83,6 +83,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/livetv/channels/{id}/play", post(livetv::play))
         .route("/api/v1/livetv/guide", get(livetv::guide))
         .route("/api/v1/livetv/groups", get(livetv::groups))
+        .route("/api/v1/vod/groups", get(crate::livetv::vod::groups))
+        .route("/api/v1/vod/movies", get(crate::livetv::vod::movies))
+        .route("/api/v1/vod/series", get(crate::livetv::vod::series))
+        .route("/api/v1/vod/episodes", get(crate::livetv::vod::episodes))
+        .route(
+            "/api/v1/vod/{id}/playback",
+            post(crate::livetv::vod::playback),
+        )
         .route(
             "/api/v1/livetv/rules",
             get(livetv::rules).post(livetv::create_rule),

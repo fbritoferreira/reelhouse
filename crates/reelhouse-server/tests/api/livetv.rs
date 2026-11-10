@@ -128,7 +128,10 @@ async fn m3u_refresh_loads_channels_and_guide() {
     let app = app().await;
     let admin = admin_token(&app).await;
     let report = add_m3u(&app, &admin, &m3u, &epg).await;
-    assert_eq!(report, json!({"channels": 2, "programmes": 2}));
+    assert_eq!(
+        report,
+        json!({"channels": 2, "programmes": 2, "on_demand": 0})
+    );
 
     let kid = user_token(&app, &admin, "kid").await;
     let (status, chans) = call(&app, "GET", "/api/v1/livetv/channels", Some(&kid), None).await;
@@ -418,7 +421,10 @@ async fn xtream_refresh_uses_panel_guide() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(report, json!({"channels": 2, "programmes": 1}));
+    assert_eq!(
+        report,
+        json!({"channels": 2, "programmes": 1, "on_demand": 0})
+    );
 }
 
 #[tokio::test]

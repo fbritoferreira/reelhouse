@@ -79,6 +79,7 @@ pub async fn playback(
         method,
         url,
         start_s,
+        duration_s: None,
     }))
 }
 

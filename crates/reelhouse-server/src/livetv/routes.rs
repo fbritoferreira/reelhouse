@@ -365,6 +365,7 @@ pub async fn play(
         method,
         url: format!("/api/v1/hls/{session}/index.m3u8"),
         start_s: 0.0,
+        duration_s: None,
     }))
 }
 
