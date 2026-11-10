@@ -136,6 +136,15 @@ pub fn capabilities() -> Capabilities {
     }
 }
 
+/// [`capabilities`] limited to audio every output takes: when surround audio will not open (a
+/// Bluetooth speaker, an old receiver), the server keeps the video and converts the sound.
+pub fn stereo_capabilities() -> Capabilities {
+    Capabilities {
+        audio_codecs: list(&["aac", "mp3"]),
+        ..capabilities()
+    }
+}
+
 /// The element the video draws into.
 pub fn surface() -> Element {
     #[cfg(target_arch = "wasm32")]

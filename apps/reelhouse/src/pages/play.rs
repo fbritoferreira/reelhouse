@@ -6,7 +6,7 @@ use reelhouse_api::Progress;
 use reelhouse_core::timefmt::{format_time, needs_restart, seek_fraction};
 
 use crate::Route;
-use crate::player::{Player, capabilities};
+use crate::player::{Player, capabilities, stereo_capabilities};
 use crate::session::client;
 use crate::widgets::describe;
 
@@ -41,16 +41,23 @@ async fn save_progress(c: &reelhouse_core::Client, id: i64, on_demand: bool, pos
 }
 
 /// How to play `id` from `start_s` seconds in.
+/// `stereo` asks for sound every output takes (see [`stereo_capabilities`]).
 async fn plan_for(
     c: &reelhouse_core::Client,
     id: i64,
     on_demand: bool,
     start_s: f64,
+    stereo: bool,
 ) -> Result<reelhouse_api::PlaybackPlan, reelhouse_core::ClientError> {
-    if on_demand {
-        c.vod_playback(id, &capabilities(), start_s).await
+    let caps = if stereo {
+        stereo_capabilities()
     } else {
-        c.playback(id, &capabilities(), start_s).await
+        capabilities()
+    };
+    if on_demand {
+        c.vod_playback(id, &caps, start_s).await
+    } else {
+        c.playback(id, &caps, start_s).await
     }
 }
 
@@ -69,6 +76,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     // from here, and can only seek within what it has converted so far.
     let mut offset = use_signal(|| 0.0);
     let mut converting = use_signal(|| false);
+    // Set after a playback failure: the title is retried once with stereo sound.
+    let mut stereo = use_signal(|| false);
     // What is playing, for the top of the screen: the show or film, then the episode.
     let mut heading = use_signal(|| None::<(String, String)>);
     // The episode after this one, offered as the credits roll.
@@ -171,7 +180,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 }
                 None => {
                     // A conversion starts where we resume; a direct file seeks there itself.
-                    let plan = match plan_for(&c, id, on_demand, resume_at).await {
+                    let plan = match plan_for(&c, id, on_demand, resume_at, false).await {
                         Ok(plan) => plan,
                         Err(e) => return error.set(Some(describe(&e))),
                     };
@@ -197,7 +206,27 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     quiet += 1;
                 }
                 if let Some(e) = p.error() {
-                    error.set(Some(e));
+                    if stereo() || local.is_some() {
+                        error.set(Some(e));
+                    } else {
+                        // Often the sound output, not the file: try once more with stereo sound,
+                        // from where it stopped.
+                        stereo.set(true);
+                        let at = offset() + p.position();
+                        match plan_for(&c, id, on_demand, at, true).await {
+                            Ok(plan) => {
+                                converting
+                                    .set(plan.method != reelhouse_api::PlaybackMethod::Direct);
+                                offset.set(plan.start_s);
+                                p.load(&c.media_url(&plan.url));
+                                if plan.start_s == 0.0 {
+                                    p.seek(at);
+                                }
+                                p.play();
+                            }
+                            Err(e2) => error.set(Some(describe(&e2))),
+                        }
+                    }
                 }
                 ticks += 1;
                 if ticks % REPORT_EVERY == 0 && p.is_playing() {
@@ -242,7 +271,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             position.set(target);
             spawn(async move {
                 let c = client();
-                match plan_for(&c, id, on_demand, target).await {
+                match plan_for(&c, id, on_demand, target, stereo()).await {
                     Ok(plan) => {
                         offset.set(plan.start_s);
                         p.load(&c.media_url(&plan.url));
