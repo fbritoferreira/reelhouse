@@ -372,3 +372,46 @@ html:has(.video.native), html:has(.video.native) body { background: transparent;
   .hero-body { max-width: 100%; }
   .episode { grid-template-columns: 1fr; }
 }
+
+/* ---- 10-foot layout (Android TV) ----------------------------------------------------------
+   Google TV lays web content out on a 960x540 canvas. Sizes follow Android TV's grid: 48px
+   overscan margins, a hero that leaves the first row in view, titles capped at two lines. */
+
+html.tv {
+  --t-small: 0.75rem;
+  --t-body: 0.875rem;
+  --t-lead: 0.9375rem;
+  --t-h2: 1.0625rem;
+  --t-h1: 1.625rem;
+  --t-hero: 2.125rem;
+  --gutter: 48px;
+  --radius: 8px;
+}
+.tv .bar { padding: 18px var(--gutter); }
+.tv .brand { font-size: 1.1rem; }
+.tv .avatar { width: 1.6rem; height: 1.6rem; font-size: 0.75rem; }
+.tv .hero { min-height: 70vh; padding: 3.5rem var(--gutter) 1.25rem; }
+.tv .hero-body { max-width: 58%; gap: 0.6rem; }
+.tv .hero-title, .tv .overview { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.tv .hero-title { -webkit-line-clamp: 2; }
+.tv .overview { -webkit-line-clamp: 2; font-size: var(--t-small); }
+.tv .primary.big, .tv .secondary.big { font-size: 0.875rem; padding: 0.55em 1.25em; }
+.tv .page-top { padding-top: 4rem; }
+.tv .rows { padding-top: 0.25rem; }
+.tv .row { margin: 1rem 0 1.5rem; }
+.tv .row h2 { margin-bottom: 0.6rem; }
+.tv .row-scroll { grid-auto-columns: 108px; gap: 14px; }
+.tv .row-scroll:has(.wide) { grid-auto-columns: 200px; }
+.tv .grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 1.25rem 14px; }
+.tv .episode { grid-template-columns: 200px 1fr; padding: 0.5rem; }
+.tv .episode-overview { font-size: var(--t-small); }
+.tv :focus-visible,
+.tv .poster:focus-visible .poster-art,
+.tv .wide:focus-visible .wide-art,
+.tv .episode:focus-visible .episode-still {
+  outline-width: 2px;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(255, 200, 97, 0.14), 0 0 22px var(--bulb-glow);
+}
+.tv .device-code { font-size: 2.75rem; }
+.tv .qr svg { width: 160px; height: 160px; }

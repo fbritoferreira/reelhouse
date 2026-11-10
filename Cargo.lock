@@ -4749,6 +4749,7 @@ dependencies = [
  "qrcode",
  "reelhouse-api",
  "reelhouse-core",
+ "reqwest",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -4843,6 +4844,7 @@ dependencies = [
  "bytes",
  "cookie",
  "cookie_store",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",

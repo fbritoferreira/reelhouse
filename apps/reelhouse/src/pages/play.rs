@@ -89,6 +89,11 @@ pub fn Play(id: i64) -> Element {
             nav.go_back();
         }
     };
+    // The remote's Back saves the position and returns, like the on-screen Back.
+    crate::tv::use_back({
+        let leave = save_and_leave.clone();
+        move || leave()
+    });
     let skip = {
         let p = player.clone();
         move |delta: f64| {

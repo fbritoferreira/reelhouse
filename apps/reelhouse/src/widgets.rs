@@ -10,11 +10,15 @@ use crate::Route;
 /// Remote fallback URLs are used as they are.
 pub fn art_url(url: Option<String>) -> Option<String> {
     let url = url?;
-    Some(if url.starts_with('/') {
-        crate::session::client().media_url(&url)
-    } else {
-        url
-    })
+    if !url.starts_with('/') {
+        return Some(url);
+    }
+    // Native apps go through their own origin (see art.rs); the web app is served by the server.
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(local) = crate::art::local_path(&url) {
+        return Some(local);
+    }
+    Some(crate::session::client().media_url(&url))
 }
 
 /// "1h 45m" or "45m".

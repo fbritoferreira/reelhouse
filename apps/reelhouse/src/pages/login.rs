@@ -7,6 +7,7 @@ use crate::widgets::describe;
 
 #[component]
 pub fn Login() -> Element {
+    crate::tv::use_back(crate::tv::exit_app);
     let mut name = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut server = use_signal(|| {
