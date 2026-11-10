@@ -238,10 +238,14 @@ button.link { background: none; padding: 0; color: var(--muted); }
 
 /* ---- Show page: seasons and episodes ----------------------------------------------------- */
 
-.seasons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 1.5rem; }
+.season-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin: 0.5rem 0 1.5rem; max-width: 72rem; }
+.season-bar:empty { display: none; }
+.seasons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .season { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 .season.active { background: var(--text); color: var(--curtain-deep); border-color: var(--text); }
 
+.episode-item { display: flex; align-items: center; gap: 0.75rem; }
+.episode-item .episode { flex: 1; min-width: 0; }
 .episodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; max-width: 72rem; }
 .episode {
   display: grid;
@@ -428,3 +432,41 @@ html.tv {
 .downloads { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 1.5rem; }
 .downloads li { display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
 .downloads .wide { width: 100%; }
+.download-group { margin-bottom: 2.5rem; }
+.download-group h2 { margin-bottom: 1rem; }
+.download-caption { display: inline-flex; align-items: center; gap: 0.5em; }
+.download-caption .reel { width: 1.25em; height: 1.25em; }
+
+/* ---- Download reel -------------------------------------------------------------------------
+   One mark for every download: an empty reel to start, winding up in marquee amber as the file
+   arrives, a solid disc with a tick once it is on this TV. Queued is a dotted reel. */
+
+.reel { width: 1.6em; height: 1.6em; flex: none; overflow: visible; }
+.reel circle { fill: none; stroke-width: 2.6; }
+.reel-track { stroke: rgba(239, 230, 220, 0.28); }
+.reel-wind { stroke: var(--bulb); stroke-linecap: round; transition: stroke-dasharray 900ms linear; }
+.reel-glyph { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.reel-pct { fill: currentColor; font: 700 10.5px/1 var(--display); font-variant-numeric: tabular-nums; }
+.reel.queued .reel-track { stroke-dasharray: 2.2 3.1; stroke: rgba(239, 230, 220, 0.5); }
+.reel.paused .reel-wind { stroke: rgba(255, 200, 97, 0.55); }
+.reel.full .reel-track { fill: var(--bulb); stroke: var(--bulb); }
+.reel.full .reel-glyph { stroke: var(--curtain-deep); }
+.reel.failed .reel-track { stroke: var(--bulb); stroke-dasharray: 3 2.5; }
+
+.download-action { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+.download-hint { font-size: var(--t-small); margin: 0; padding-left: 1.4em; }
+.reel-button { font-size: var(--t-lead); padding: 0.55em 1.4em 0.55em 0.75em; }
+.reel-button.done { background: rgba(255, 200, 97, 0.12); color: var(--bulb); }
+.reel-button:disabled { opacity: 1; }
+.reel-button:disabled:not(.done) { color: var(--muted); }
+
+.reel-icon { padding: 0.5em; font-size: 1.15rem; background: transparent; color: var(--muted); }
+.reel-icon:hover, .reel-icon:focus-visible { color: var(--text); background: rgba(239, 230, 220, 0.08); }
+.reel-icon .reel { width: 1.75em; height: 1.75em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-wind { transition: none; }
+}
+
+.tv .reel-button { font-size: 0.875rem; padding: 0.45em 1.1em 0.45em 0.55em; }
+.tv .reel-icon { font-size: 0.95rem; padding: 0.4em; }

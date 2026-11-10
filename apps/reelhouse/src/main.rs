@@ -2,6 +2,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod art;
+mod download_ui;
 #[cfg(not(target_arch = "wasm32"))]
 mod downloads;
 mod pages;

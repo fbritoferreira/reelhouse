@@ -2,7 +2,7 @@
 //! requests so an interrupted download resumes, plus its poster and backdrop so the Downloads
 //! screen works without the server. The list lives in `downloads.json` next to the files.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -27,6 +27,8 @@ pub enum State {
     Paused {
         fraction: f64,
     },
+    /// Waiting for the downloads ahead of it.
+    Queued,
     Running {
         fraction: f64,
     },
@@ -114,6 +116,9 @@ pub fn state(id: i64) -> State {
             .map(|t| bytes as f64 / t as f64)
             .unwrap_or(0.0)
     };
+    if is_queued(id) {
+        return State::Queued;
+    }
     if let Some(entry) = running().lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
         return match entry {
             Ok((bytes, total)) => State::Running {
@@ -159,17 +164,41 @@ pub fn art(id: i64, kind: &str) -> Option<(String, Vec<u8>)> {
     Some((content_type.to_string(), bytes))
 }
 
-/// Starts (or resumes) downloading `item` in the background.
+/// Downloads waiting their turn; one runs at a time so a whole show does not saturate the line.
+#[derive(Default)]
+struct Queue {
+    waiting: VecDeque<(Client, Item)>,
+    worker: bool,
+}
+
+fn queue() -> &'static Mutex<Queue> {
+    static QUEUE: OnceLock<Mutex<Queue>> = OnceLock::new();
+    QUEUE.get_or_init(Default::default)
+}
+
+fn is_queued(id: i64) -> bool {
+    queue()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .waiting
+        .iter()
+        .any(|(_, i)| i.id == id)
+}
+
+/// Adds `item` to the download queue (or resumes it), unless it is already done or under way.
 pub fn start(client: Client, item: Item) {
     let Some(dir) = base_dir() else { return };
     let id = item.id;
-    {
-        let mut map = running().lock().unwrap_or_else(|e| e.into_inner());
-        if matches!(map.get(&id), Some(Ok(_))) {
-            return;
-        }
-        map.insert(id, Ok((0, None)));
+    if matches!(
+        state(id),
+        State::Done | State::Queued | State::Running { .. }
+    ) {
+        return;
     }
+    running()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&id);
     update_index(&dir, |list| {
         if !list.iter().any(|d| d.item.id == id) {
             list.push(Download {
@@ -180,7 +209,41 @@ pub fn start(client: Client, item: Item) {
             });
         }
     });
-    std::thread::spawn(move || {
+    let spawn_worker = {
+        let mut q = queue().lock().unwrap_or_else(|e| e.into_inner());
+        q.waiting.push_back((client, item));
+        !std::mem::replace(&mut q.worker, true)
+    };
+    if spawn_worker {
+        std::thread::spawn(move || work(dir));
+    }
+}
+
+/// Queues several items at once, in order.
+pub fn start_all(client: Client, items: Vec<Item>) {
+    for item in items {
+        start(client.clone(), item);
+    }
+}
+
+fn work(dir: PathBuf) {
+    loop {
+        let next = {
+            let mut q = queue().lock().unwrap_or_else(|e| e.into_inner());
+            match q.waiting.pop_front() {
+                Some(job) => job,
+                None => {
+                    q.worker = false;
+                    return;
+                }
+            }
+        };
+        let (client, item) = next;
+        let id = item.id;
+        running()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, Ok((0, None)));
         let result = fetch(&client, &dir, id);
         let mut map = running().lock().unwrap_or_else(|e| e.into_inner());
         match result {
@@ -193,7 +256,17 @@ pub fn start(client: Client, item: Item) {
                 map.insert(id, Err(e));
             }
         }
-    });
+    }
+}
+
+/// How many of `ids` are on the device, and whether any are queued or downloading.
+pub fn summary(ids: &[i64]) -> (usize, bool) {
+    let states: Vec<State> = ids.iter().map(|id| state(*id)).collect();
+    let done = states.iter().filter(|s| **s == State::Done).count();
+    let busy = states
+        .iter()
+        .any(|s| matches!(s, State::Queued | State::Running { .. }));
+    (done, busy)
 }
 
 fn fetch(client: &Client, dir: &Path, id: i64) -> Result<(), String> {
