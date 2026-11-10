@@ -1,0 +1,9 @@
+[application]
+name = "reelhouse"
+
+[web.app]
+title = "Reelhouse"
+
+[bundle]
+identifier = "dev.reelhouse.app"
+publisher = "Reelhouse"

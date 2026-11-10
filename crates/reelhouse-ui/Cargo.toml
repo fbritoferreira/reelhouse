@@ -1,0 +1,11 @@
+[package]
+name = "reelhouse-ui"
+description = "Dioxus components shared by the Reelhouse apps."
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+dioxus = { workspace = true }
