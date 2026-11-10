@@ -75,17 +75,21 @@ mod imp {
 
     pub struct Player;
 
+    pub fn video() -> Option<HtmlVideoElement> {
+        web_sys::window()?
+            .document()?
+            .get_element_by_id(VIDEO_ID)?
+            .dyn_into()
+            .ok()
+    }
+
     impl Player {
         pub fn new() -> Self {
             Player
         }
 
         fn video(&self) -> Option<HtmlVideoElement> {
-            web_sys::window()?
-                .document()?
-                .get_element_by_id(VIDEO_ID)?
-                .dyn_into()
-                .ok()
+            video()
         }
 
         pub fn load(&self, url: &str) {
@@ -283,6 +287,62 @@ pub fn toggle_fullscreen() {
             imp::VIDEO_ID
         );
         let _ = js_sys::eval(&js);
+    }
+}
+
+/// Raises or lowers the volume by `delta` (0 to 1); returns what to show, "Volume 60%". Web only.
+pub fn nudge_volume(delta: f64) -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let v = imp::video()?;
+        let level = (v.volume() + delta).clamp(0.0, 1.0);
+        v.set_volume(level);
+        v.set_muted(level == 0.0);
+        Some(format!("Volume {}%", (level * 100.0).round()))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = delta;
+        None
+    }
+}
+
+/// Mutes or unmutes; returns what to show. Web only.
+pub fn toggle_mute() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let v = imp::video()?;
+        v.set_muted(!v.muted());
+        Some(if v.muted() {
+            "Muted".into()
+        } else {
+            "Sound on".into()
+        })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+/// Speeds playback up or down by `delta`, between quarter and double speed; returns what to
+/// show. Web only.
+pub fn nudge_speed(delta: f64) -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let v = imp::video()?;
+        let rate = (v.playback_rate() + delta).clamp(0.25, 2.0);
+        v.set_playback_rate(rate);
+        Some(if rate == 1.0 {
+            "Normal speed".into()
+        } else {
+            format!("Speed {rate}×")
+        })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = delta;
+        None
     }
 }
 
