@@ -272,7 +272,12 @@ pub async fn playback(
         .start
         .filter(|s| s.is_finite() && *s > 0.0)
         .unwrap_or(0.0);
-    let session = state.hls.start(&url, method, caps.max_height, start_s)?;
+    let audio = crate::scan::probe::audio_languages(&url)
+        .await
+        .unwrap_or_default();
+    let session = state
+        .hls
+        .start(&url, method, caps.max_height, start_s, &audio)?;
     state
         .hls
         .ready(&session, std::time::Duration::from_secs(30))

@@ -351,7 +351,7 @@ pub async fn play(
         .fetch_one(&state.db)
         .await?;
     let method = PlaybackMethod::Remux;
-    let session = state.hls.start(&url, method, u32::MAX, 0.0)?;
+    let session = state.hls.start(&url, method, u32::MAX, 0.0, &[])?;
     // Live sources fail at the far end often (dead channels, connection limits); say so now
     // rather than hand the player a playlist that never appears.
     state

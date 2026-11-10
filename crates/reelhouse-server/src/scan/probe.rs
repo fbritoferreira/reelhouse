@@ -76,3 +76,32 @@ pub async fn probe(path: &Path) -> Result<MediaInfo> {
         height: stream("video").and_then(|s| s.height),
     })
 }
+
+/// The language of each soundtrack in `input` (a path or URL), in stream order; `None` where a
+/// track is untagged.
+pub async fn audio_languages(input: &str) -> Result<Vec<Option<String>>> {
+    let out = tokio::process::Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream_tags=language",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(input)
+        .output()
+        .await
+        .context("running ffprobe")?;
+    anyhow::ensure!(
+        out.status.success(),
+        "ffprobe failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| Some(l.trim().to_string()).filter(|l| !l.is_empty()))
+        .collect())
+}

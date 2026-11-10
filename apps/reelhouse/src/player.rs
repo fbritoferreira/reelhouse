@@ -138,12 +138,27 @@ mod imp {
             self.video().is_some_and(|v| !v.paused())
         }
 
-        /// Track choice comes with the native players; the browser plays the stream's first tracks.
+        /// The stream's soundtracks, from hls.js (subtitles reach the browser later).
         pub fn tracks(&self) -> Vec<super::Track> {
-            Vec::new()
+            let js = "JSON.stringify((window.__hls && window.__hls.audioTracks || []).map((t, i) => ({ \
+                kind: 'audio', group: 0, index: i, label: '', language: t.lang || '', \
+                channels: 0, selected: i === window.__hls.audioTrack })))";
+            js_sys::eval(js)
+                .ok()
+                .and_then(|v| v.as_string())
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
         }
 
-        pub fn select_track(&self, _t: &super::Track) {}
+        pub fn select_track(&self, t: &super::Track) {
+            if t.kind == "audio" {
+                let _ = js_sys::eval(&format!(
+                    "window.__hls && (window.__hls.audioTrack = {})",
+                    t.index
+                ));
+            }
+        }
+
         pub fn subtitles_off(&self) {}
 
         pub fn error(&self) -> Option<String> {
