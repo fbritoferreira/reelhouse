@@ -67,6 +67,12 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/livetv/channels", get(livetv::channels))
         .route("/api/v1/livetv/channels/{id}/play", post(livetv::play))
         .route("/api/v1/livetv/guide", get(livetv::guide))
+        .route(
+            "/api/v1/livetv/rules",
+            get(livetv::rules).post(livetv::create_rule),
+        )
+        .route("/api/v1/livetv/rules/{id}", delete(livetv::delete_rule))
+        .route("/api/v1/livetv/recordings", get(livetv::recordings))
         .route("/api/v1/import/plex", post(import::plex_import))
         .with_state(state);
     match web_dir {

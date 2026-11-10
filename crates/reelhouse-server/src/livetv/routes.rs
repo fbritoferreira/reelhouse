@@ -4,12 +4,13 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use reelhouse_api::{
-    Channel, GuideChannel, NewTvSource, PlaybackMethod, PlaybackPlan, Programme, RefreshReport,
-    TvSource, TvSourceKind,
+    Channel, GuideChannel, NewRecordingRule, NewTvSource, PlaybackMethod, PlaybackPlan, Programme,
+    Recording, RecordingRule, RefreshReport, RuleKind, TvSource, TvSourceKind,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
 
+use super::dvr;
 use crate::app::AppState;
 use crate::auth::{AdminUser, CurrentUser, now};
 use crate::error::{ApiError, ApiResult};
@@ -232,4 +233,183 @@ pub async fn play(
         method,
         url: format!("/api/v1/hls/{session}/index.m3u8"),
     }))
+}
+
+#[derive(FromRow)]
+struct RuleRow {
+    id: i64,
+    kind: String,
+    channel_id: i64,
+    programme_id: Option<i64>,
+    series_title: Option<String>,
+    padding_before_s: i64,
+    padding_after_s: i64,
+    keep_last: Option<i64>,
+}
+
+impl From<RuleRow> for RecordingRule {
+    fn from(r: RuleRow) -> Self {
+        RecordingRule {
+            id: r.id,
+            kind: dvr::parse_kind(&r.kind),
+            channel_id: r.channel_id,
+            programme_id: r.programme_id,
+            series_title: r.series_title,
+            padding_before_s: r.padding_before_s,
+            padding_after_s: r.padding_after_s,
+            keep_last: r.keep_last,
+        }
+    }
+}
+
+const RULE_SELECT: &str = "SELECT id, kind, channel_id, programme_id, series_title, padding_before_s, \
+     padding_after_s, keep_last FROM recording_rules";
+
+pub async fn rules(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> ApiResult<Json<Vec<RecordingRule>>> {
+    let rows: Vec<RuleRow> =
+        sqlx::query_as(&format!("{RULE_SELECT} WHERE user_id = ? ORDER BY id"))
+            .bind(user.id)
+            .fetch_all(&state.db)
+            .await?;
+    Ok(Json(rows.into_iter().map(RecordingRule::from).collect()))
+}
+
+pub async fn create_rule(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(new): Json<NewRecordingRule>,
+) -> ApiResult<(StatusCode, Json<RecordingRule>)> {
+    let bad = |m: &str| Err(ApiError::BadRequest(m.into()));
+    if new.padding_before_s < 0 || new.padding_after_s < 0 {
+        return bad("padding cannot be negative");
+    }
+    if new.keep_last.is_some_and(|k| k < 1) {
+        return bad("keep_last must be at least 1");
+    }
+    let (channel_id, series_title, series_key) = match (new.programme_id, new.kind) {
+        (Some(pid), kind) => {
+            let p: Option<(i64, String, Option<String>)> =
+                sqlx::query_as("SELECT channel_id, title, series_key FROM programmes WHERE id = ?")
+                    .bind(pid)
+                    .fetch_optional(&state.db)
+                    .await?;
+            let Some((channel_id, title, key)) = p else {
+                return bad("unknown programme");
+            };
+            match kind {
+                RuleKind::Once => (channel_id, None, None),
+                RuleKind::Series => (channel_id, Some(title), key),
+            }
+        }
+        (None, RuleKind::Series) => {
+            let (Some(channel_id), Some(title)) = (new.channel_id, new.series_title.clone()) else {
+                return bad("a series rule needs a programme, or a channel and a series title");
+            };
+            let known: Option<(i64,)> = sqlx::query_as("SELECT id FROM channels WHERE id = ?")
+                .bind(channel_id)
+                .fetch_optional(&state.db)
+                .await?;
+            if known.is_none() {
+                return bad("unknown channel");
+            }
+            (channel_id, Some(title), None)
+        }
+        (None, RuleKind::Once) => return bad("a once rule needs a programme"),
+    };
+    let kind = match new.kind {
+        RuleKind::Once => "once",
+        RuleKind::Series => "series",
+    };
+    let id = sqlx::query(
+        "INSERT INTO recording_rules (user_id, kind, channel_id, programme_id, series_title, series_key, \
+         padding_before_s, padding_after_s, keep_last) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(user.id)
+    .bind(kind)
+    .bind(channel_id)
+    .bind(new.programme_id)
+    .bind(&series_title)
+    .bind(&series_key)
+    .bind(new.padding_before_s)
+    .bind(new.padding_after_s)
+    .bind(new.keep_last)
+    .execute(&state.db)
+    .await?
+    .last_insert_rowid();
+    // Schedule now: a guide refresh may replace the programme before the DVR's next tick.
+    dvr::schedule(&state.db, now()).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(RecordingRule {
+            id,
+            kind: new.kind,
+            channel_id,
+            programme_id: new.programme_id,
+            series_title,
+            padding_before_s: new.padding_before_s,
+            padding_after_s: new.padding_after_s,
+            keep_last: new.keep_last,
+        }),
+    ))
+}
+
+/// Deletes the rule and its recording rows; finished files stay in the Recordings library.
+pub async fn delete_rule(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    let done = sqlx::query("DELETE FROM recording_rules WHERE id = ? AND user_id = ?")
+        .bind(id)
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(FromRow)]
+struct RecordingRow {
+    id: i64,
+    rule_id: i64,
+    channel_id: i64,
+    title: String,
+    subtitle: Option<String>,
+    start: i64,
+    stop: i64,
+    status: String,
+    item_id: Option<i64>,
+}
+
+pub async fn recordings(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> ApiResult<Json<Vec<Recording>>> {
+    let rows: Vec<RecordingRow> = sqlx::query_as(
+        "SELECT r.id, r.rule_id, r.channel_id, r.title, r.subtitle, r.start, r.stop, r.status, r.item_id \
+         FROM recordings r JOIN recording_rules u ON u.id = r.rule_id WHERE u.user_id = ? ORDER BY r.start",
+    )
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| Recording {
+                id: r.id,
+                rule_id: r.rule_id,
+                channel_id: r.channel_id,
+                title: r.title,
+                subtitle: r.subtitle,
+                start: r.start,
+                stop: r.stop,
+                status: dvr::parse_status(&r.status),
+                item_id: r.item_id,
+            })
+            .collect(),
+    ))
 }

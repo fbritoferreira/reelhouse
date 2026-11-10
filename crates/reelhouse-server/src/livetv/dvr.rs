@@ -1,6 +1,9 @@
 //! The DVR: turns rules and the guide into recordings, and runs ffmpeg for them.
 
+use anyhow::Result;
 use reelhouse_api::{RecordingStatus, RuleKind};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{FromRow, Row, SqlitePool};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rule {
@@ -14,7 +17,7 @@ pub struct Rule {
     pub padding_after_s: i64,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, FromRow)]
 pub struct Programme {
     pub id: i64,
     pub channel_id: i64,
@@ -134,6 +137,104 @@ pub fn plan(rules: &[Rule], programmes: &[Programme], recordings: &[Existing], n
         }
     }
     out
+}
+
+pub fn status_str(s: RecordingStatus) -> &'static str {
+    match s {
+        RecordingStatus::Scheduled => "scheduled",
+        RecordingStatus::Recording => "recording",
+        RecordingStatus::Done => "done",
+        RecordingStatus::Failed => "failed",
+    }
+}
+
+pub fn parse_status(s: &str) -> RecordingStatus {
+    match s {
+        "recording" => RecordingStatus::Recording,
+        "done" => RecordingStatus::Done,
+        "failed" => RecordingStatus::Failed,
+        _ => RecordingStatus::Scheduled,
+    }
+}
+
+pub fn parse_kind(s: &str) -> RuleKind {
+    if s == "series" {
+        RuleKind::Series
+    } else {
+        RuleKind::Once
+    }
+}
+
+impl FromRow<'_, SqliteRow> for Rule {
+    fn from_row(r: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Rule {
+            id: r.try_get("id")?,
+            kind: parse_kind(r.try_get("kind")?),
+            channel_id: r.try_get("channel_id")?,
+            programme_id: r.try_get("programme_id")?,
+            series_title: r.try_get("series_title")?,
+            series_key: r.try_get("series_key")?,
+            padding_before_s: r.try_get("padding_before_s")?,
+            padding_after_s: r.try_get("padding_after_s")?,
+        })
+    }
+}
+
+impl FromRow<'_, SqliteRow> for Existing {
+    fn from_row(r: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Existing {
+            id: r.try_get("id")?,
+            rule_id: r.try_get("rule_id")?,
+            channel_id: r.try_get("channel_id")?,
+            title: r.try_get("title")?,
+            subtitle: r.try_get("subtitle")?,
+            start: r.try_get("start")?,
+            stop: r.try_get("stop")?,
+            status: parse_status(r.try_get("status")?),
+        })
+    }
+}
+
+/// Plans at `now`, stores the new recordings and fails the missed ones.
+/// Returns the plan so the caller can start and stop ffmpeg.
+pub async fn schedule(db: &SqlitePool, now: i64) -> Result<Plan> {
+    let rules: Vec<Rule> = sqlx::query_as("SELECT * FROM recording_rules")
+        .fetch_all(db)
+        .await?;
+    // A day of slack covers any padding after a programme's end.
+    let programmes: Vec<Programme> = sqlx::query_as(
+        "SELECT id, channel_id, start, stop, title, subtitle, series_key FROM programmes \
+         WHERE stop > ? AND channel_id IN (SELECT channel_id FROM recording_rules)",
+    )
+    .bind(now - 86_400)
+    .fetch_all(db)
+    .await?;
+    // ponytail: loads every recording each tick for duplicate checks; filter by rule if history grows large.
+    let recordings: Vec<Existing> = sqlx::query_as("SELECT * FROM recordings")
+        .fetch_all(db)
+        .await?;
+    let plan = plan(&rules, &programmes, &recordings, now);
+    for c in &plan.create {
+        sqlx::query(
+            "INSERT OR IGNORE INTO recordings (rule_id, channel_id, title, subtitle, start, stop, status) \
+             VALUES (?, ?, ?, ?, ?, ?, 'scheduled')",
+        )
+        .bind(c.rule_id)
+        .bind(c.channel_id)
+        .bind(&c.title)
+        .bind(&c.subtitle)
+        .bind(c.start)
+        .bind(c.stop)
+        .execute(db)
+        .await?;
+    }
+    for id in &plan.missed {
+        sqlx::query("UPDATE recordings SET status = 'failed' WHERE id = ?")
+            .bind(id)
+            .execute(db)
+            .await?;
+    }
+    Ok(plan)
 }
 
 #[cfg(test)]

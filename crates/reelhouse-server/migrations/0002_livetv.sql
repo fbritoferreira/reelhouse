@@ -62,7 +62,7 @@ CREATE TABLE recordings (
     stop INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('scheduled', 'recording', 'done', 'failed')),
     file_path TEXT,
-    item_id INTEGER REFERENCES items ON DELETE SET NULL
+    item_id INTEGER REFERENCES items ON DELETE SET NULL,
+    -- Rule creation and the DVR tick may plan the same airing at once.
+    UNIQUE (rule_id, channel_id, start)
 );
-
-CREATE INDEX recordings_rule ON recordings (rule_id);
