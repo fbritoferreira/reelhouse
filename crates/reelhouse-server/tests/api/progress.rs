@@ -128,3 +128,33 @@ async fn continue_watching_orders_by_recent() {
     assert_eq!(cont[0]["title"], "Brazil");
     assert_eq!(cont[1]["title"], "Alien");
 }
+
+#[tokio::test]
+async fn recently_added_puts_newest_titles_and_shows_with_new_episodes_first() {
+    let (app, db) = app_and_db(Config::for_tests(std::env::temp_dir())).await;
+    let token = admin_token(&app).await;
+    sqlx::query(
+        "INSERT INTO libraries (id, name, kind, path) VALUES (1, 'm', 'movies', '/m'), (2, 't', 'tv', '/t')",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let insert = |sql: &'static str| sqlx::query(sql).execute(&db);
+    insert("INSERT INTO items (id, library_id, kind, title, file_path, added_at) VALUES (1, 1, 'movie', 'Old film', '/m/a', 100)").await.unwrap();
+    insert("INSERT INTO items (id, library_id, kind, title, file_path, added_at) VALUES (2, 1, 'movie', 'New film', '/m/b', 300)").await.unwrap();
+    // A show added long ago that just got a new episode.
+    insert("INSERT INTO items (id, library_id, kind, title, added_at) VALUES (3, 2, 'show', 'Show', 50)").await.unwrap();
+    insert("INSERT INTO items (id, library_id, kind, parent_id, title, season_no, added_at) VALUES (4, 2, 'season', 3, 'Season 1', 1, 50)").await.unwrap();
+    insert("INSERT INTO items (id, library_id, kind, parent_id, title, season_no, episode_no, file_path, added_at) VALUES (5, 2, 'episode', 4, 'Pilot', 1, 1, '/t/1', 50)").await.unwrap();
+    insert("INSERT INTO items (id, library_id, kind, parent_id, title, season_no, episode_no, file_path, added_at) VALUES (6, 2, 'episode', 4, 'Next', 1, 2, '/t/2', 500)").await.unwrap();
+
+    let (status, recent) = call(&app, "GET", "/api/v1/recent", Some(&token), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let titles: Vec<&str> = recent
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["Show", "New film", "Old film"]);
+}

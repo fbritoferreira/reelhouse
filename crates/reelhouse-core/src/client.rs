@@ -370,6 +370,11 @@ impl Client {
         self.get("/api/v1/continue").await
     }
 
+    /// Films and shows, newest first (a show by its newest episode).
+    pub async fn recently_added(&self) -> Result<Vec<Item>, ClientError> {
+        self.get("/api/v1/recent").await
+    }
+
     /// How to play `id`; an HLS conversion begins `start_s` seconds in.
     pub async fn playback(
         &self,
