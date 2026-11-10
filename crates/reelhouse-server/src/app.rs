@@ -70,6 +70,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/items/{id}/playback", post(stream::playback))
         .route("/api/v1/items/{id}/file", get(stream::file))
         .route("/api/v1/items/{id}/offline", post(stream::offline))
+        .route("/api/v1/items/{id}/subtitles", get(stream::subtitles))
+        .route(
+            "/api/v1/items/{id}/subtitles/{index}",
+            get(stream::subtitle),
+        )
         .route("/api/v1/items/{id}/mp4", get(stream::mp4))
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))

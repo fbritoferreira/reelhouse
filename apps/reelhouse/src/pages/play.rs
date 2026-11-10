@@ -40,6 +40,30 @@ async fn save_progress(c: &reelhouse_core::Client, id: i64, on_demand: bool, pos
     };
 }
 
+/// Attaches a library title's text subtitles, timed for a stream that begins `start_s` in.
+async fn attach_subtitles(c: &reelhouse_core::Client, p: &Player, id: i64, start_s: f64) {
+    let Ok(list) = c.subtitles(id).await else {
+        return;
+    };
+    let tracks: Vec<(String, String, String)> = list
+        .iter()
+        .map(|t| {
+            let lang = t.language.clone().unwrap_or_default();
+            let label = t
+                .title
+                .clone()
+                .or_else(|| crate::player::language_name(&lang).map(str::to_string))
+                .unwrap_or_else(|| format!("Subtitles {}", t.index + 1));
+            let url = c.media_url(&format!(
+                "/api/v1/items/{id}/subtitles/{}?start={start_s:.3}",
+                t.index
+            ));
+            (label, lang, url)
+        })
+        .collect();
+    p.set_subtitles(&tracks);
+}
+
 /// How to play `id` from `start_s` seconds in.
 /// `stereo` asks for sound every output takes (see [`stereo_capabilities`]).
 async fn plan_for(
@@ -194,6 +218,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     converting.set(plan.method != reelhouse_api::PlaybackMethod::Direct);
                     offset.set(plan.start_s);
                     p.load(&c.media_url(&plan.url));
+                    if !on_demand {
+                        attach_subtitles(&c, &p, id, plan.start_s).await;
+                    }
                     if plan.start_s == 0.0 {
                         p.seek(resume_at);
                     }
@@ -223,6 +250,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                                     .set(plan.method != reelhouse_api::PlaybackMethod::Direct);
                                 offset.set(plan.start_s);
                                 p.load(&c.media_url(&plan.url));
+                                if !on_demand {
+                                    attach_subtitles(&c, &p, id, plan.start_s).await;
+                                }
                                 if plan.start_s == 0.0 {
                                     p.seek(at);
                                 }
@@ -304,6 +334,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     Ok(plan) => {
                         offset.set(plan.start_s);
                         p.load(&c.media_url(&plan.url));
+                        if !on_demand {
+                            attach_subtitles(&c, &p, id, plan.start_s).await;
+                        }
                         p.play();
                     }
                     Err(e) => error.set(Some(describe(&e))),
@@ -433,7 +466,10 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     button { class: "player-skip", "aria-label": "Forward 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(SKIP_SECONDS) },
                         "+10"
                     }
-                    if cfg!(target_os = "android") || tracks().len() > 1 {
+                    if cfg!(target_os = "android")
+                        || tracks().iter().any(|t| t.kind == "text")
+                        || tracks().iter().filter(|t| t.kind == "audio").count() > 1
+                    {
                         button {
                             class: if picking() { "player-tracks current" } else { "player-tracks" },
                             "aria-expanded": picking(),

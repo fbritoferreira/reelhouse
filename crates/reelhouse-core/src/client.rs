@@ -333,6 +333,11 @@ impl Client {
         self.get("/api/v1/livetv/recordings").await
     }
 
+    /// The title's text subtitle tracks, each served as WebVTT.
+    pub async fn subtitles(&self, id: i64) -> Result<Vec<SubtitleTrack>, ClientError> {
+        self.get(&format!("/api/v1/items/{id}/subtitles")).await
+    }
+
     /// Where to fetch a copy of `id` to keep offline; on-demand titles use their negated id.
     pub async fn offline_source(
         &self,

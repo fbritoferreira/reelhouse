@@ -105,3 +105,53 @@ pub async fn audio_languages(input: &str) -> Result<Vec<Option<String>>> {
         .map(|l| Some(l.trim().to_string()).filter(|l| !l.is_empty()))
         .collect())
 }
+
+/// Subtitle codecs that convert to WebVTT; picture subtitles (PGS, DVB) do not.
+const TEXT_SUBTITLES: &[&str] = &["subrip", "srt", "ass", "ssa", "webvtt", "mov_text", "text"];
+
+/// The text subtitle tracks in `input`: their index among the file's subtitle streams, language
+/// and title.
+pub async fn text_subtitles(input: &str) -> Result<Vec<(i64, Option<String>, Option<String>)>> {
+    let out = tokio::process::Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "s",
+            "-show_entries",
+            "stream=codec_name:stream_tags=language,title",
+            "-of",
+            "json",
+        ])
+        .arg(input)
+        .output()
+        .await
+        .context("running ffprobe")?;
+    anyhow::ensure!(
+        out.status.success(),
+        "ffprobe failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)?;
+    let tag = |s: &serde_json::Value, k: &str| {
+        s["tags"][k]
+            .as_str()
+            .map(str::to_string)
+            .filter(|t| !t.is_empty())
+    };
+    Ok(v["streams"]
+        .as_array()
+        .map(|streams| {
+            streams
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| {
+                    s["codec_name"]
+                        .as_str()
+                        .is_some_and(|c| TEXT_SUBTITLES.contains(&c))
+                })
+                .map(|(i, s)| (i as i64, tag(s, "language"), tag(s, "title")))
+                .collect()
+        })
+        .unwrap_or_default())
+}

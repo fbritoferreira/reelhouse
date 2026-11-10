@@ -41,7 +41,7 @@ impl Track {
     }
 }
 
-fn language_name(code: &str) -> Option<&'static str> {
+pub(crate) fn language_name(code: &str) -> Option<&'static str> {
     Some(
         match code.split(['-', '_']).next()?.to_ascii_lowercase().as_str() {
             "en" | "eng" => "English",
@@ -142,11 +142,18 @@ mod imp {
             self.video().is_some_and(|v| !v.paused())
         }
 
-        /// The stream's soundtracks, from hls.js (subtitles reach the browser later).
+        /// The stream's soundtracks (from hls.js) and the subtitle tracks attached to the video.
         pub fn tracks(&self) -> Vec<super::Track> {
-            let js = "JSON.stringify((window.__hls && window.__hls.audioTracks || []).map((t, i) => ({ \
-                kind: 'audio', group: 0, index: i, label: '', language: t.lang || '', \
-                channels: 0, selected: i === window.__hls.audioTrack })))";
+            let js = format!(
+                "JSON.stringify([].concat( \
+                (window.__hls && window.__hls.audioTracks || []).map((t, i) => ({{ \
+                  kind: 'audio', group: 0, index: i, label: '', language: t.lang || '', \
+                  channels: 0, selected: i === window.__hls.audioTrack }})), \
+                Array.from((document.getElementById({VIDEO_ID:?}) || {{ textTracks: [] }}).textTracks) \
+                  .map((t, i) => ({{ kind: 'text', group: 0, index: i, label: t.label || '', \
+                    language: t.language || '', channels: 0, selected: t.mode === 'showing' }}))))"
+            );
+            let js = js.as_str();
             js_sys::eval(js)
                 .ok()
                 .and_then(|v| v.as_string())
@@ -160,10 +167,37 @@ mod imp {
                     "window.__hls && (window.__hls.audioTrack = {})",
                     t.index
                 ));
+            } else {
+                let _ = js_sys::eval(&format!(
+                    "Array.from(document.getElementById({VIDEO_ID:?}).textTracks) \
+                     .forEach((t, i) => t.mode = i === {} ? 'showing' : 'disabled')",
+                    t.index
+                ));
             }
         }
 
-        pub fn subtitles_off(&self) {}
+        pub fn subtitles_off(&self) {
+            let _ = js_sys::eval(&format!(
+                "Array.from(document.getElementById({VIDEO_ID:?}).textTracks) \
+                 .forEach(t => t.mode = 'disabled')"
+            ));
+        }
+
+        /// Replaces the video's subtitle tracks with `(label, language, url)`; none shows until
+        /// chosen, except the one already showing under the same label.
+        pub fn set_subtitles(&self, tracks: &[(String, String, String)]) {
+            let list = serde_json::to_string(tracks).unwrap_or_else(|_| "[]".into());
+            let _ = js_sys::eval(&format!(
+                "(() => {{ const v = document.getElementById({VIDEO_ID:?}); if (!v) return; \
+                 const showing = Array.from(v.textTracks).find(t => t.mode === 'showing'); \
+                 const keep = showing && showing.label; \
+                 v.querySelectorAll('track').forEach(t => t.remove()); \
+                 for (const [label, lang, src] of {list}) {{ \
+                   const t = document.createElement('track'); t.kind = 'subtitles'; t.label = label; \
+                   t.srclang = lang; t.src = src; v.appendChild(t); \
+                   if (label === keep) t.track.mode = 'showing'; }} }})()"
+            ));
+        }
 
         pub fn error(&self) -> Option<String> {
             let e = self.video()?.error()?;
@@ -209,6 +243,7 @@ mod imp {
         }
         pub fn select_track(&self, _t: &super::Track) {}
         pub fn subtitles_off(&self) {}
+        pub fn set_subtitles(&self, _tracks: &[(String, String, String)]) {}
     }
 }
 

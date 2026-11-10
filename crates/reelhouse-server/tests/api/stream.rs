@@ -347,3 +347,96 @@ async fn offline_copies_come_as_files_or_mp4() {
     assert_eq!(plan["resumable"], true);
     assert_eq!(plan["url"], format!("/api/v1/items/{id}/file"));
 }
+
+#[tokio::test]
+async fn text_subtitles_come_as_webvtt() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let film = dir.path().join("Subs (2020)/Subs (2020).mkv");
+    std::fs::create_dir_all(film.parent().unwrap()).unwrap();
+    let srt = dir.path().join("en.srt");
+    std::fs::write(&srt, "1\n00:00:01,000 --> 00:00:03,000\nHello there\n\n2\n00:00:05,000 --> 00:00:07,000\nSecond line\n").unwrap();
+    assert!(
+        Command::new("ffmpeg")
+            .args(["-y", "-v", "error"])
+            .args(["-f", "lavfi", "-i", "testsrc=d=8:s=320x240"])
+            .args(["-f", "lavfi", "-i", "sine=d=8"])
+            .arg("-i")
+            .arg(&srt)
+            .args([
+                "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac", "-c:s",
+                "srt"
+            ])
+            .args(["-metadata:s:s:0", "language=eng"])
+            .arg(&film)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let app = super::common::app_with(Config::for_tests(std::env::temp_dir())).await;
+    let token = admin_token(&app).await;
+    let (_, lib) = call(
+        &app,
+        "POST",
+        "/api/v1/libraries",
+        Some(&token),
+        Some(json!({"name": "m", "kind": "movies", "path": dir.path()})),
+    )
+    .await;
+    let lib = lib["id"].as_i64().unwrap();
+    call(
+        &app,
+        "POST",
+        &format!("/api/v1/libraries/{lib}/scan"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let (_, items) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/libraries/{lib}/items"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let id = items[0]["id"].as_i64().unwrap();
+
+    let (status, subs) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/items/{id}/subtitles"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        subs,
+        json!([{"index": 0, "language": "eng", "title": null}])
+    );
+
+    let (status, _, body) = get(
+        &app,
+        &format!("/api/v1/items/{id}/subtitles/0?token={token}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let vtt = String::from_utf8_lossy(&body);
+    assert!(vtt.starts_with("WEBVTT"), "{vtt}");
+    assert!(vtt.contains("Hello there"), "{vtt}");
+
+    // Starting part-way in, the cues move to the stream's clock.
+    let (_, _, body) = get(
+        &app,
+        &format!("/api/v1/items/{id}/subtitles/0?start=4&token={token}"),
+        None,
+    )
+    .await;
+    let vtt = String::from_utf8_lossy(&body);
+    assert!(!vtt.contains("Hello there"), "{vtt}");
+    assert!(vtt.contains("00:01.000 --> 00:03.000"), "{vtt}");
+}
