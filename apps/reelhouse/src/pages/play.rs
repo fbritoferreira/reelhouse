@@ -11,6 +11,12 @@ use crate::session::client;
 use crate::widgets::describe;
 
 const SKIP_SECONDS: f64 = 10.0;
+/// The arrow keys skip less on a keyboard, as on YouTube; the remote's arrows keep the long skip.
+const ARROW_SECONDS: f64 = if cfg!(target_arch = "wasm32") {
+    5.0
+} else {
+    SKIP_SECONDS
+};
 const REPORT_EVERY: u32 = 40; // polls of 250 ms = 10 s
 /// Controls fade out after this many quiet polls of 250 ms while playing (3 s).
 const HIDE_AFTER: u32 = 12;
@@ -108,6 +114,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     let mut up_next = use_signal(|| None::<(Route, String)>);
     // The title's resolution, shown beside what is playing.
     let mut badge = use_signal(|| None::<&'static str>);
+    // What the last key changed ("Volume 60%"), shown until the controls fade.
+    let mut hint = use_signal(|| None::<String>);
     let nav = navigator();
 
     let p = player.clone();
@@ -235,6 +243,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 playing.set(p.is_playing());
                 if p.is_playing() {
                     quiet += 1;
+                    if quiet() == HIDE_AFTER {
+                        hint.set(None);
+                    }
                 }
                 if let Some(e) = p.error() {
                     if stereo() || local.is_some() {
@@ -353,9 +364,14 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             }
         }
     };
+    // YouTube's keys: Space or K plays and pauses, J and L skip 10 s, the arrows skip 5 s and
+    // change the volume, M mutes, F fills the screen, C turns subtitles on and off, 0 to 9 jump
+    // to that tenth, Home and End to the ends, < and > change the speed, Shift+N plays the next.
     let on_key = {
         let mut skip = skip.clone();
+        let mut go_to = go_to.clone();
         let leave = save_and_leave.clone();
+        let p = player.clone();
         move |e: KeyboardEvent| {
             if e.key() == Key::Escape && crate::player::is_fullscreen() {
                 return crate::player::toggle_fullscreen();
@@ -363,29 +379,116 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             if e.key() == Key::Escape || e.key() == Key::GoBack || e.key() == Key::BrowserBack {
                 return leave();
             }
-            // With the controls hidden, the first press only brings them back.
             let was_hidden = !controls_shown();
             quiet.set(0);
             instant.set(false);
-            if was_hidden {
+            // On the TV the first press only brings the controls back; a keyboard acts at once.
+            if was_hidden && cfg!(target_os = "android") {
                 e.prevent_default();
                 return;
             }
-            match e.key() {
+            // Leave the browser's own shortcuts alone.
+            if e.modifiers()
+                .intersects(Modifiers::CONTROL | Modifiers::META | Modifiers::ALT)
+            {
+                return;
+            }
+            let web = cfg!(target_arch = "wasm32");
+            let d = duration();
+            let handled = match e.key() {
                 Key::ArrowLeft => {
-                    e.prevent_default();
-                    skip(-SKIP_SECONDS);
+                    skip(-ARROW_SECONDS);
+                    true
                 }
                 Key::ArrowRight => {
-                    e.prevent_default();
-                    skip(SKIP_SECONDS);
+                    skip(ARROW_SECONDS);
+                    true
                 }
-                Key::Character(c)
-                    if cfg!(target_arch = "wasm32") && c.eq_ignore_ascii_case("f") =>
-                {
-                    crate::player::toggle_fullscreen();
+                // On the TV the up and down arrows move between buttons.
+                Key::ArrowUp if web => {
+                    hint.set(crate::player::nudge_volume(0.05));
+                    true
                 }
-                _ => {}
+                Key::ArrowDown if web => {
+                    hint.set(crate::player::nudge_volume(-0.05));
+                    true
+                }
+                Key::Home if d > 0.0 => {
+                    go_to(0.0);
+                    true
+                }
+                Key::End if d > 0.0 => {
+                    go_to(seek_fraction(1.0, d));
+                    true
+                }
+                Key::Character(c) => match c.as_str() {
+                    " " | "k" | "K" => {
+                        if p.is_playing() {
+                            p.pause()
+                        } else {
+                            p.play()
+                        }
+                        true
+                    }
+                    "j" | "J" => {
+                        skip(-SKIP_SECONDS);
+                        true
+                    }
+                    "l" | "L" => {
+                        skip(SKIP_SECONDS);
+                        true
+                    }
+                    "f" | "F" if web => {
+                        crate::player::toggle_fullscreen();
+                        true
+                    }
+                    "m" | "M" if web => {
+                        hint.set(crate::player::toggle_mute());
+                        true
+                    }
+                    ">" if web => {
+                        hint.set(crate::player::nudge_speed(0.25));
+                        true
+                    }
+                    "<" if web => {
+                        hint.set(crate::player::nudge_speed(-0.25));
+                        true
+                    }
+                    "c" | "C" => {
+                        let text: Vec<_> = p
+                            .tracks()
+                            .into_iter()
+                            .filter(|t| t.kind == "text")
+                            .collect();
+                        hint.set(Some(if text.iter().any(|t| t.selected) {
+                            p.subtitles_off();
+                            "Subtitles off".into()
+                        } else if let Some(t) = text.first() {
+                            p.select_track(t);
+                            format!("Subtitles: {}", t.name())
+                        } else {
+                            "No subtitles for this title".into()
+                        }));
+                        true
+                    }
+                    "N" => {
+                        if let Some((to, _)) = up_next() {
+                            nav.push(to);
+                        }
+                        true
+                    }
+                    n => match n.parse::<u8>() {
+                        Ok(tenth) if tenth <= 9 && d > 0.0 => {
+                            go_to(seek_fraction(f64::from(tenth) / 10.0, d));
+                            true
+                        }
+                        _ => false,
+                    },
+                },
+                _ => false,
+            };
+            if handled {
+                e.prevent_default();
             }
         }
     };
@@ -415,6 +518,12 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             class: if controls_shown() { "player" } else if instant() { "player idle instant" } else { "player idle" },
             "data-rh-seek": "true",
             onkeydown: on_key,
+            // Space on a focused button would press it as well when the key comes up.
+            onkeyup: move |e: KeyboardEvent| {
+                if e.key() == Key::Character(" ".into()) {
+                    e.prevent_default();
+                }
+            },
             onmousemove: move |_| quiet.set(0),
             {crate::player::surface()}
             div { class: "player-top",
@@ -443,6 +552,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             div { class: "player-controls",
                 if let Some(msg) = error() {
                     p { class: "notice", "Playback stopped: {msg}" }
+                }
+                if let Some(h) = hint() {
+                    p { class: "player-hint", role: "status", "{h}" }
                 }
                 div { class: "player-scrub",
                     span { class: "time", "{format_time(position())}" }
@@ -474,30 +586,32 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     button { class: "player-skip", "aria-label": "Forward 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(SKIP_SECONDS) },
                         "+10"
                     }
-                    if cfg!(target_os = "android")
-                        || tracks().iter().any(|t| t.kind == "text")
-                        || tracks().iter().filter(|t| t.kind == "audio").count() > 1
-                    {
-                        button {
-                            class: if picking() { "player-tracks current" } else { "player-tracks" },
-                            "aria-expanded": picking(),
-                            onclick: {
-                                let p = player.clone();
-                                move |_| {
-                                    tracks.set(p.tracks());
-                                    picking.toggle();
-                                }
-                            },
-                            "Audio & subtitles"
+                    div { class: "player-end",
+                        if cfg!(target_os = "android")
+                            || tracks().iter().any(|t| t.kind == "text")
+                            || tracks().iter().filter(|t| t.kind == "audio").count() > 1
+                        {
+                            button {
+                                class: if picking() { "player-tracks current" } else { "player-tracks" },
+                                "aria-expanded": picking(),
+                                onclick: {
+                                    let p = player.clone();
+                                    move |_| {
+                                        tracks.set(p.tracks());
+                                        picking.toggle();
+                                    }
+                                },
+                                "Audio & subtitles"
+                            }
                         }
-                    }
-                    if cfg!(target_arch = "wasm32") {
-                        button {
-                            class: "player-tracks",
-                            "aria-label": if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" },
-                            title: "Full screen (F)",
-                            onclick: move |_| crate::player::toggle_fullscreen(),
-                            if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" }
+                        if cfg!(target_arch = "wasm32") {
+                            button {
+                                class: "player-tracks",
+                                "aria-label": if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" },
+                                title: "Full screen (F)",
+                                onclick: move |_| crate::player::toggle_fullscreen(),
+                                if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" }
+                            }
                         }
                     }
                 }
