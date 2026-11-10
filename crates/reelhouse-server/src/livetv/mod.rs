@@ -2,6 +2,18 @@
 
 pub mod m3u;
 pub mod xmltv;
+pub mod xtream;
+
+use anyhow::Result;
+
+/// The body of an `http(s)` URL, or the contents of a local file for anything else.
+pub async fn fetch_text(url: &str) -> Result<String> {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Ok(reqwest::get(url).await?.error_for_status()?.text().await?)
+    } else {
+        Ok(tokio::fs::read_to_string(url).await?)
+    }
+}
 
 /// A channel as a source lists it, before it is stored.
 #[derive(Debug, Clone, Default, PartialEq)]

@@ -7,3 +7,4 @@ mod progress;
 mod scan;
 mod stream;
 mod tmdb;
+mod xtream;
