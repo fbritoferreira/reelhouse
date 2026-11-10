@@ -203,3 +203,71 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         on_demand: vod.len() as u64,
     })
 }
+
+/// The HTTP status a provider answers for `url`, without reading the stream. `None` for local
+/// files and when it does not answer at all.
+pub(crate) async fn provider_status(url: &str) -> Option<u16> {
+    if !url.starts_with("http") {
+        return None;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .ok()?;
+    client
+        .get(url)
+        .send()
+        .await
+        .ok()
+        .map(|r| r.status().as_u16())
+}
+
+/// Plain words for a provider's refusal of a stream, by HTTP status; `what` is "channel" or
+/// "title".
+pub(crate) fn refusal(status: u16, what: &str) -> Option<String> {
+    match status {
+        401 | 403 | 407 => Some(format!(
+            "your provider won't play this {what} on your account"
+        )),
+        404 | 410 => Some(format!("your provider no longer carries this {what}")),
+        429 => Some(
+            "your provider's limit on streams at once is reached; stop another stream and try again"
+                .into(),
+        ),
+        500..=599 => Some("your provider's server isn't answering; try again in a minute".into()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod refusal_tests {
+    use super::refusal;
+
+    #[test]
+    fn provider_refusals_read_plainly() {
+        assert_eq!(
+            refusal(407, "channel").as_deref(),
+            Some("your provider won't play this channel on your account")
+        );
+        assert_eq!(
+            refusal(403, "title").as_deref(),
+            Some("your provider won't play this title on your account")
+        );
+        assert_eq!(
+            refusal(404, "title").as_deref(),
+            Some("your provider no longer carries this title")
+        );
+        assert_eq!(
+            refusal(429, "channel").as_deref(),
+            Some(
+                "your provider's limit on streams at once is reached; stop another stream and try again"
+            )
+        );
+        assert_eq!(
+            refusal(503, "channel").as_deref(),
+            Some("your provider's server isn't answering; try again in a minute")
+        );
+        assert_eq!(refusal(200, "channel"), None);
+        assert_eq!(refusal(206, "title"), None);
+    }
+}

@@ -325,3 +325,44 @@ async fn an_on_demand_title_can_be_kept_as_mp4() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(&body[4..8], b"ftyp");
 }
+
+#[tokio::test]
+async fn a_title_the_provider_lost_says_why() {
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let provider = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&provider)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), &format!("{}/movie/u/p/1.mp4", provider.uri()));
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    let caps = json!({"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "max_height": 1080});
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/vod/{}/playback", films[0]["id"]))
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(caps.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8_lossy(&body);
+    assert_eq!(body, "your provider no longer carries this title");
+}
