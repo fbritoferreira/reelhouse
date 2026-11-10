@@ -382,6 +382,44 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             let was_hidden = !controls_shown();
             quiet.set(0);
             instant.set(false);
+            // The remote's media keys (and a keyboard's) act at once, controls shown or not.
+            let media = match e.key() {
+                Key::MediaPlayPause => {
+                    if p.is_playing() {
+                        p.pause()
+                    } else {
+                        p.play()
+                    }
+                    true
+                }
+                Key::MediaPlay => {
+                    p.play();
+                    true
+                }
+                Key::MediaPause => {
+                    p.pause();
+                    true
+                }
+                Key::MediaFastForward => {
+                    skip(SKIP_SECONDS);
+                    true
+                }
+                Key::MediaRewind => {
+                    skip(-SKIP_SECONDS);
+                    true
+                }
+                Key::MediaTrackNext => {
+                    if let Some((to, _)) = up_next() {
+                        nav.push(to);
+                    }
+                    true
+                }
+                _ => false,
+            };
+            if media {
+                e.prevent_default();
+                return;
+            }
             // On the TV the first press only brings the controls back; a keyboard acts at once.
             if was_hidden && cfg!(target_os = "android") {
                 e.prevent_default();
