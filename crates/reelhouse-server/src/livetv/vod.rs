@@ -4,8 +4,8 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use reelhouse_api::{
-    Capabilities, PlaybackMethod, PlaybackPlan, Progress, VodEpisode, VodGroup, VodMovie, VodShow,
-    VodTitle,
+    Capabilities, PlaybackMethod, PlaybackPlan, Progress, VodEpisode, VodGroup, VodMovie,
+    VodSearch, VodShow, VodTitle,
 };
 use serde::Deserialize;
 
@@ -332,4 +332,58 @@ pub async fn file(
     }
     out.body(axum::body::Body::from_stream(res.bytes_stream()))
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))
+}
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    q: String,
+}
+
+/// Films and shows whose title contains `q`, at most 30 of each.
+pub async fn search(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<SearchQuery>,
+) -> ApiResult<Json<VodSearch>> {
+    let q = q.q.trim().to_string();
+    if q.chars().count() < 2 {
+        return Ok(Json(VodSearch::default()));
+    }
+    let films: Vec<TitleRow> = sqlx::query_as(&format!(
+        "{TITLE_SELECT} WHERE v.kind = 'movie' AND v.title LIKE '%' || ?1 || '%' ORDER BY v.id LIMIT 30"
+    ))
+    .bind(&q)
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+    let shows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT show_title, MIN(poster_url), COUNT(DISTINCT season_no), COUNT(*) FROM vod_items \
+         WHERE kind = 'episode' AND show_title LIKE '%' || ? || '%' \
+         GROUP BY show_title ORDER BY MIN(id) LIMIT 30",
+    )
+    .bind(&q)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(VodSearch {
+        films: films
+            .into_iter()
+            .map(|r| VodMovie {
+                progress: r.progress(),
+                id: r.id,
+                title: r.title,
+                year: r.year,
+                poster_url: r.poster_url,
+                duration_s: r.duration_s,
+            })
+            .collect(),
+        shows: shows
+            .into_iter()
+            .map(|(title, poster_url, seasons, episodes)| VodShow {
+                title,
+                poster_url,
+                seasons,
+                episodes,
+            })
+            .collect(),
+    }))
 }

@@ -257,6 +257,15 @@ impl Client {
         .await
     }
 
+    /// On-demand films and shows whose title contains `q`.
+    pub async fn vod_search(&self, q: &str) -> Result<VodSearch, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/vod/search")
+                .query(&[("q", q)]),
+        )
+        .await
+    }
+
     pub async fn vod_title(&self, id: i64) -> Result<VodTitle, ClientError> {
         self.get(&format!("/api/v1/vod/{id}")).await
     }
