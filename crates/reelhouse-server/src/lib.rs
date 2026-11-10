@@ -8,4 +8,5 @@ pub mod error;
 pub mod libraries;
 pub mod metadata;
 pub mod scan;
+pub mod stream;
 pub mod users;

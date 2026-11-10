@@ -5,15 +5,31 @@ use axum::routing::{delete, get, post};
 use sqlx::SqlitePool;
 
 use crate::config::Config;
+use crate::stream::hls::Sessions;
+use crate::stream::routes as stream;
 use crate::{libraries, users};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
     pub config: Arc<Config>,
+    pub hls: Arc<Sessions>,
 }
 
-pub const FEATURES: &[&str] = &["libraries", "users"];
+impl AppState {
+    /// Builds the state and starts the HLS reaper (needs a tokio runtime).
+    pub fn new(db: SqlitePool, config: Config) -> Self {
+        let hls = Arc::new(Sessions::default());
+        hls.spawn_reaper(config.hls_idle);
+        Self {
+            db,
+            config: Arc::new(config),
+            hls,
+        }
+    }
+}
+
+pub const FEATURES: &[&str] = &["libraries", "users", "hls"];
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -32,5 +48,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/libraries/{id}/items", get(libraries::items))
         .route("/api/v1/items/{id}", get(libraries::item))
         .route("/api/v1/items/{id}/children", get(libraries::children))
+        .route("/api/v1/items/{id}/playback", post(stream::playback))
+        .route("/api/v1/items/{id}/file", get(stream::file))
+        .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .with_state(state)
 }

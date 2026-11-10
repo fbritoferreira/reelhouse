@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -11,10 +9,7 @@ use tower::ServiceExt;
 
 pub async fn app_with(config: Config) -> Router {
     let db = reelhouse_server::db::open_memory().await.unwrap();
-    router(AppState {
-        db,
-        config: Arc::new(config),
-    })
+    router(AppState::new(db, config))
 }
 
 pub async fn app() -> Router {

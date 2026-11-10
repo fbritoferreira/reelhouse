@@ -1,0 +1,190 @@
+mod common;
+
+use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use common::{admin_token, call};
+use http_body_util::BodyExt;
+use reelhouse_server::config::Config;
+use serde_json::json;
+use tower::ServiceExt;
+
+fn have_ffmpeg() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+fn make_video(path: &Path, secs: u32) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let d = format!("testsrc=d={secs}:s=320x240");
+    let a = format!("sine=d={secs}");
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                &d,
+                "-f",
+                "lavfi",
+                "-i",
+                &a,
+                "-shortest",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac"
+            ])
+            .arg(path)
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+/// App with one scanned movie; returns (app, token, item id, tempdir guard).
+async fn setup(idle: Duration) -> (axum::Router, String, i64, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    make_video(&dir.path().join("Clip (2020).mkv"), 12);
+    let mut config = Config::for_tests(std::env::temp_dir());
+    config.hls_idle = idle;
+    let app = common::app_with(config).await;
+    let token = admin_token(&app).await;
+    let (_, lib) = call(
+        &app,
+        "POST",
+        "/api/v1/libraries",
+        Some(&token),
+        Some(json!({"name": "m", "kind": "movies", "path": dir.path()})),
+    )
+    .await;
+    let lib = lib["id"].as_i64().unwrap();
+    call(
+        &app,
+        "POST",
+        &format!("/api/v1/libraries/{lib}/scan"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let (_, items) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/libraries/{lib}/items"),
+        Some(&token),
+        None,
+    )
+    .await;
+    (app, token, items[0]["id"].as_i64().unwrap(), dir)
+}
+
+async fn get(
+    app: &axum::Router,
+    uri: &str,
+    range: Option<&str>,
+) -> (StatusCode, Option<String>, Vec<u8>) {
+    let mut req = Request::builder().uri(uri);
+    if let Some(r) = range {
+        req = req.header("range", r);
+    }
+    let res = app
+        .clone()
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let cr = res
+        .headers()
+        .get("content-range")
+        .map(|v| v.to_str().unwrap().to_string());
+    (
+        status,
+        cr,
+        res.into_body().collect().await.unwrap().to_bytes().to_vec(),
+    )
+}
+
+#[tokio::test]
+async fn file_supports_ranges() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(60)).await;
+    let (status, cr, body) = get(
+        &app,
+        &format!("/api/v1/items/{id}/file?token={token}"),
+        Some("bytes=0-99"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PARTIAL_CONTENT);
+    assert!(cr.unwrap().starts_with("bytes 0-99/"));
+    assert_eq!(body.len(), 100);
+}
+
+#[tokio::test]
+async fn range_past_end_is_416() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(60)).await;
+    let (status, _, _) = get(
+        &app,
+        &format!("/api/v1/items/{id}/file?token={token}"),
+        Some("bytes=999999999-"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::RANGE_NOT_SATISFIABLE);
+}
+
+async fn start_hls(app: &axum::Router, token: &str, id: i64) -> String {
+    let caps = json!({"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "max_height": 1080});
+    let (status, plan) = call(
+        app,
+        "POST",
+        &format!("/api/v1/items/{id}/playback"),
+        Some(token),
+        Some(caps),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(plan["method"], "remux");
+    plan["url"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn hls_playlist_appears() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(60)).await;
+    let url = start_hls(&app, &token, id).await;
+    let (status, _, body) = get(&app, &format!("{url}?token={token}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(String::from_utf8_lossy(&body).starts_with("#EXTM3U"));
+}
+
+#[tokio::test]
+async fn idle_hls_session_is_reaped() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(2)).await;
+    let url = start_hls(&app, &token, id).await;
+    assert_eq!(
+        get(&app, &format!("{url}?token={token}"), None).await.0,
+        StatusCode::OK
+    );
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    assert_eq!(
+        get(&app, &format!("{url}?token={token}"), None).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
