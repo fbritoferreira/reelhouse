@@ -4,9 +4,9 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use reelhouse_api::{
-    Channel, ChannelGroup, GuideChannel, NewRecordingRule, NewTvSource, PlaybackMethod,
-    PlaybackPlan, Programme, Recording, RecordingRule, RefreshReport, RuleKind, TvSource,
-    TvSourceKind,
+    Channel, ChannelGroup, GuideChannel, HiddenGroups, NewRecordingRule, NewTvSource,
+    PlaybackMethod, PlaybackPlan, Programme, Recording, RecordingRule, RefreshReport, RuleKind,
+    SourceGroup, TvSource, TvSourceKind,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
@@ -100,6 +100,61 @@ pub async fn create_source(
     ))
 }
 
+/// Every group of one source, with whether Live TV shows it.
+pub async fn source_groups(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<Vec<SourceGroup>>> {
+    sqlx::query("SELECT 1 FROM tv_sources WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    let rows: Vec<(Option<String>, i64, bool)> = sqlx::query_as(&format!(
+        "SELECT group_title, COUNT(*), {VISIBLE} FROM channels WHERE source_id = ? \
+         GROUP BY group_title ORDER BY group_title IS NULL, MIN(number), group_title"
+    ))
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(name, channels, shown)| SourceGroup {
+                name,
+                channels,
+                shown,
+            })
+            .collect(),
+    ))
+}
+
+/// Replaces which of a source's groups are hidden.
+pub async fn hide_groups(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+    Path(id): Path<i64>,
+    Json(body): Json<HiddenGroups>,
+) -> ApiResult<StatusCode> {
+    sqlx::query("SELECT 1 FROM tv_sources WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    let mut tx = state.db.begin().await?;
+    sqlx::query("DELETE FROM hidden_groups WHERE source_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    for name in &body.hidden {
+        sqlx::query("INSERT OR IGNORE INTO hidden_groups (source_id, group_title) VALUES (?, ?)")
+            .bind(id)
+            .bind(name.as_deref().unwrap_or(""))
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Removes a source with its channels, guide and the recording rules on those channels.
 pub async fn delete_source(
     State(state): State<AppState>,
@@ -158,10 +213,14 @@ impl From<ChannelRow> for Channel {
 /// Matches channels in group `?1`: every channel when it is NULL, the ungrouped when it is ''.
 const IN_GROUP: &str = "(?1 IS NULL OR group_title = ?1 OR (?1 = '' AND group_title IS NULL))";
 
+/// Leaves out channels in groups an admin has hidden (see `source_groups`).
+const VISIBLE: &str = "NOT EXISTS (SELECT 1 FROM hidden_groups h WHERE h.source_id = channels.source_id \
+     AND h.group_title = COALESCE(channels.group_title, ''))";
+
 async fn all_channels(state: &AppState, group: Option<&str>) -> ApiResult<Vec<Channel>> {
     let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
         "SELECT id, source_id, number, name, logo_url, group_title FROM channels \
-         WHERE {IN_GROUP} ORDER BY number IS NULL, number, name"
+         WHERE {IN_GROUP} AND {VISIBLE} ORDER BY number IS NULL, number, name"
     ))
     .bind(group)
     .fetch_all(&state.db)
@@ -181,10 +240,10 @@ pub async fn groups(
     State(state): State<AppState>,
     _user: CurrentUser,
 ) -> ApiResult<Json<Vec<ChannelGroup>>> {
-    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
-        "SELECT group_title, COUNT(*) FROM channels GROUP BY group_title \
-         ORDER BY group_title IS NULL, MIN(number), group_title",
-    )
+    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(&format!(
+        "SELECT group_title, COUNT(*) FROM channels WHERE {VISIBLE} GROUP BY group_title \
+         ORDER BY group_title IS NULL, MIN(number), group_title"
+    ))
     .fetch_all(&state.db)
     .await?;
     Ok(Json(
@@ -228,7 +287,7 @@ pub async fn guide(
         "SELECT id, channel_id, start, stop, title, subtitle, description FROM ( \
            SELECT *, ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY start) AS n FROM programmes \
            WHERE stop > ?2 AND start < ?3 \
-           AND channel_id IN (SELECT id FROM channels WHERE {IN_GROUP})) \
+           AND channel_id IN (SELECT id FROM channels WHERE {IN_GROUP} AND {VISIBLE})) \
          WHERE ?4 IS NULL OR n <= ?4 ORDER BY start"
     ))
     .bind(group)

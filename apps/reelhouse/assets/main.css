@@ -549,3 +549,18 @@ button.danger { background: #c2412d; color: var(--text); }
 .live-sort-option.current { background: var(--text); color: var(--curtain-deep); border-color: var(--text); }
 .tv .live-sort-option { font-size: 0.75rem; }
 .live-more { margin: 0.75rem 0 0 4.2em; font-size: var(--t-small); }
+
+.list li.group-picker { display: block; padding: 1rem 0 1.25rem; }
+.group-picker-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+.group-picker-head input { flex: 1 1 14rem; }
+.group-checks {
+  list-style: none; margin: 0; padding: 0.25rem; max-height: 22rem; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.15rem 1rem;
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.group-checks label { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem; border-radius: 6px; cursor: pointer; }
+.group-checks label:hover { background: rgba(239, 230, 220, 0.05); }
+.group-checks label span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-checks input { accent-color: var(--bulb); width: 1.05rem; height: 1.05rem; }
+.group-picker-actions { display: flex; gap: 0.75rem; margin-top: 0.9rem; }
+button.secondary.current { background: var(--surface-raised); }

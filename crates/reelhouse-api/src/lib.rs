@@ -192,6 +192,20 @@ pub struct ChannelGroup {
     pub channels: i64,
 }
 
+/// One of a source's groups, and whether Live TV shows it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SourceGroup {
+    pub name: Option<String>,
+    pub channels: i64,
+    pub shown: bool,
+}
+
+/// The groups of a source to hide; `None` is the ungrouped.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct HiddenGroups {
+    pub hidden: Vec<Option<String>>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GuideChannel {
     pub channel: Channel,

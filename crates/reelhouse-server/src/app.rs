@@ -72,6 +72,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/livetv/sources/{id}", delete(livetv::delete_source))
         .route(
+            "/api/v1/livetv/sources/{id}/groups",
+            get(livetv::source_groups).put(livetv::hide_groups),
+        )
+        .route(
             "/api/v1/livetv/sources/{id}/refresh",
             post(livetv::refresh_source),
         )

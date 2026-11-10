@@ -281,6 +281,73 @@ async fn guide_can_cap_programmes_per_channel() {
 }
 
 #[tokio::test]
+async fn hidden_groups_leave_live_tv() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    let id = sources[0]["id"].as_i64().unwrap();
+    let path = format!("/api/v1/livetv/sources/{id}/groups");
+
+    let (status, groups) = call(&app, "GET", &path, Some(&admin), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        groups,
+        json!([{"name": "UK", "channels": 1, "shown": true}, {"name": null, "channels": 1, "shown": true}])
+    );
+
+    let kid = user_token(&app, &admin, "kid").await;
+    let (status, _) = call(
+        &app,
+        "PUT",
+        &path,
+        Some(&kid),
+        Some(json!({"hidden": ["UK"]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _) = call(
+        &app,
+        "PUT",
+        &path,
+        Some(&admin),
+        Some(json!({"hidden": ["UK"]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, groups) = call(&app, "GET", &path, Some(&admin), None).await;
+    assert_eq!(groups[0]["shown"], false);
+    let (_, visible) = call(&app, "GET", "/api/v1/livetv/groups", Some(&admin), None).await;
+    assert_eq!(visible, json!([{"name": null, "channels": 1}]));
+    let (_, chans) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    assert_eq!(chans.as_array().unwrap().len(), 1);
+    let (_, uk) = call(
+        &app,
+        "GET",
+        "/api/v1/livetv/guide?group=UK",
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(uk, json!([]));
+
+    // A refresh keeps the choice.
+    call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{id}/refresh"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    let (_, visible) = call(&app, "GET", "/api/v1/livetv/groups", Some(&admin), None).await;
+    assert_eq!(visible, json!([{"name": null, "channels": 1}]));
+}
+
+#[tokio::test]
 async fn refresh_keeps_channel_ids() {
     let dir = tempfile::tempdir().unwrap();
     let (m3u, epg) = write_source(dir.path(), "http://example.invalid/n.ts", &guide(&[]));
