@@ -1,9 +1,18 @@
 //! The DVR: turns rules and the guide into recordings, and runs ffmpeg for them.
 
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
 use anyhow::Result;
 use reelhouse_api::{RecordingStatus, RuleKind};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row, SqlitePool};
+use tokio::process::{Child, Command};
+
+use super::xmltv::civil_from_days;
+use crate::auth::now;
+use crate::scan::probe::probe;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rule {
@@ -237,6 +246,221 @@ pub async fn schedule(db: &SqlitePool, now: i64) -> Result<Plan> {
     Ok(plan)
 }
 
+/// `<Title>/<Title> - YYYY-MM-DD HH-MM.ts`, in UTC, with characters filesystems reject replaced.
+pub fn relative_path(title: &str, start: i64) -> PathBuf {
+    let safe: String = title
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    let safe = match safe.trim().trim_start_matches('.') {
+        "" => "Recording",
+        s => s,
+    };
+    let (y, m, d) = civil_from_days(start.div_euclid(86_400));
+    let secs = start.rem_euclid(86_400);
+    let name = format!(
+        "{safe} - {y:04}-{m:02}-{d:02} {:02}-{:02}.ts",
+        secs / 3600,
+        secs / 60 % 60
+    );
+    Path::new(safe).join(name)
+}
+
+/// Runs ffmpeg for due recordings and files finished ones into the Recordings library.
+pub struct Recorder {
+    db: SqlitePool,
+    dir: PathBuf,
+    running: HashMap<i64, Child>,
+}
+
+impl Recorder {
+    pub fn new(db: SqlitePool, dir: PathBuf) -> Self {
+        Self {
+            db,
+            dir,
+            running: HashMap::new(),
+        }
+    }
+
+    pub fn spawn(mut self, every: Duration) {
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(every);
+            loop {
+                tick.tick().await;
+                if let Err(e) = self.tick(now()).await {
+                    tracing::warn!("dvr: {e:#}");
+                }
+            }
+        });
+    }
+
+    pub async fn tick(&mut self, now: i64) -> Result<()> {
+        let plan = schedule(&self.db, now).await?;
+        // Rows deleted with their rule are cancelled; dropping the child kills ffmpeg.
+        let live: HashSet<i64> =
+            sqlx::query_as::<_, (i64,)>("SELECT id FROM recordings WHERE status = 'recording'")
+                .fetch_all(&self.db)
+                .await?
+                .into_iter()
+                .map(|(id,)| id)
+                .collect();
+        self.running.retain(|id, _| live.contains(id));
+        for id in plan.start {
+            if let Err(e) = self.start(id, now).await {
+                tracing::warn!("dvr: recording {id} failed to start: {e:#}");
+                set_status(&self.db, id, RecordingStatus::Failed).await?;
+            }
+        }
+        for id in plan.stop {
+            if let Some(mut child) = self.running.remove(&id) {
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+            }
+            self.finish(id).await?;
+        }
+        Ok(())
+    }
+
+    async fn start(&mut self, id: i64, now: i64) -> Result<()> {
+        let (url, title, start, stop): (String, String, i64, i64) = sqlx::query_as(
+            "SELECT c.stream_url, r.title, r.start, r.stop FROM recordings r \
+             JOIN channels c ON c.id = r.channel_id WHERE r.id = ?",
+        )
+        .bind(id)
+        .fetch_one(&self.db)
+        .await?;
+        let mut path = self.dir.join(relative_path(&title, start));
+        // Two rules on one airing would otherwise share a file.
+        let (taken,): (bool,) =
+            sqlx::query_as("SELECT EXISTS (SELECT 1 FROM recordings WHERE file_path = ?)")
+                .bind(path.to_string_lossy())
+                .fetch_one(&self.db)
+                .await?;
+        if taken || path.exists() {
+            path.set_extension(format!("{id}.ts"));
+        }
+        std::fs::create_dir_all(path.parent().unwrap_or(&self.dir))?;
+        let child = Command::new("ffmpeg")
+            .args(["-v", "error", "-nostdin", "-y", "-i", &url, "-c", "copy"])
+            .args(["-t", &(stop - now).max(1).to_string(), "-f", "mpegts"])
+            .arg(&path)
+            .kill_on_drop(true)
+            .spawn()?;
+        self.running.insert(id, child);
+        sqlx::query("UPDATE recordings SET status = 'recording', file_path = ? WHERE id = ?")
+            .bind(path.to_string_lossy())
+            .bind(id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    /// Marks the recording done and adds it to the library, or failed if nothing was written.
+    async fn finish(&self, id: i64) -> Result<()> {
+        let (rule_id, title, subtitle, file): (i64, String, Option<String>, Option<String>) =
+            sqlx::query_as(
+                "SELECT rule_id, title, subtitle, file_path FROM recordings WHERE id = ?",
+            )
+            .bind(id)
+            .fetch_one(&self.db)
+            .await?;
+        let Some(file) = file.filter(|f| std::fs::metadata(f).is_ok_and(|m| m.len() > 0)) else {
+            return set_status(&self.db, id, RecordingStatus::Failed).await;
+        };
+        let library = self.library().await?;
+        let info = probe(Path::new(&file)).await.unwrap_or_default();
+        let name = match &subtitle {
+            Some(s) => format!("{title} - {s}"),
+            None => Path::new(&file)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or(title),
+        };
+        let (item_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO items (library_id, kind, title, file_path, duration_s, container, video_codec, \
+             audio_codec, height, added_at) VALUES (?, 'movie', ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT (file_path) DO UPDATE SET title = excluded.title, duration_s = excluded.duration_s, \
+             container = excluded.container, video_codec = excluded.video_codec, \
+             audio_codec = excluded.audio_codec, height = excluded.height RETURNING id",
+        )
+        .bind(library)
+        .bind(&name)
+        .bind(&file)
+        .bind(info.duration_s)
+        .bind(&info.container)
+        .bind(&info.video_codec)
+        .bind(&info.audio_codec)
+        .bind(info.height)
+        .bind(now())
+        .fetch_one(&self.db)
+        .await?;
+        sqlx::query("UPDATE recordings SET status = 'done', item_id = ? WHERE id = ?")
+            .bind(item_id)
+            .bind(id)
+            .execute(&self.db)
+            .await?;
+        self.keep_last(rule_id).await
+    }
+
+    /// The "Recordings" movie library over the recordings folder, created on first use.
+    async fn library(&self) -> Result<i64> {
+        let found: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM libraries WHERE name = 'Recordings'")
+                .fetch_optional(&self.db)
+                .await?;
+        if let Some((id,)) = found {
+            return Ok(id);
+        }
+        std::fs::create_dir_all(&self.dir)?;
+        Ok(sqlx::query(
+            "INSERT INTO libraries (name, kind, path) VALUES ('Recordings', 'movies', ?)",
+        )
+        .bind(self.dir.to_string_lossy())
+        .execute(&self.db)
+        .await?
+        .last_insert_rowid())
+    }
+
+    /// Deletes the files and items of a rule's recordings beyond its newest `keep_last`.
+    /// The rows stay, so a series rule does not record those episodes again.
+    async fn keep_last(&self, rule_id: i64) -> Result<()> {
+        let old: Vec<(i64, String, Option<i64>)> = sqlx::query_as(
+            "SELECT r.id, r.file_path, r.item_id FROM recordings r JOIN recording_rules u ON u.id = r.rule_id \
+             WHERE r.rule_id = ? AND u.keep_last IS NOT NULL AND r.status = 'done' AND r.file_path IS NOT NULL \
+             ORDER BY r.start DESC LIMIT -1 OFFSET (SELECT keep_last FROM recording_rules WHERE id = ?)",
+        )
+        .bind(rule_id)
+        .bind(rule_id)
+        .fetch_all(&self.db)
+        .await?;
+        for (id, file, item) in old {
+            let _ = std::fs::remove_file(&file);
+            sqlx::query("DELETE FROM items WHERE id = ?")
+                .bind(item)
+                .execute(&self.db)
+                .await?;
+            sqlx::query("UPDATE recordings SET file_path = NULL, item_id = NULL WHERE id = ?")
+                .bind(id)
+                .execute(&self.db)
+                .await?;
+        }
+        Ok(())
+    }
+}
+
+async fn set_status(db: &SqlitePool, id: i64, status: RecordingStatus) -> Result<()> {
+    sqlx::query("UPDATE recordings SET status = ? WHERE id = ?")
+        .bind(status_str(status))
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +503,23 @@ mod tests {
             stop: p.stop + 120,
             status,
         }
+    }
+
+    #[test]
+    fn recording_path_is_title_and_utc_start() {
+        // 2026-11-10 19:05 UTC
+        assert_eq!(
+            relative_path("Doctor Who", 1_794_337_500),
+            Path::new("Doctor Who/Doctor Who - 2026-11-10 19-05.ts")
+        );
+        assert_eq!(
+            relative_path("../A/B: C?", 0),
+            Path::new("_A_B_ C_/_A_B_ C_ - 1970-01-01 00-00.ts")
+        );
+        assert_eq!(
+            relative_path(" ", 0),
+            Path::new("Recording/Recording - 1970-01-01 00-00.ts")
+        );
     }
 
     fn created_starts(plan: &Plan) -> Vec<i64> {

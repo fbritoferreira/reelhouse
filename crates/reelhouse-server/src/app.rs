@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
+use crate::livetv::dvr::Recorder;
 use crate::livetv::routes as livetv;
 use crate::stream::hls::Sessions;
 use crate::stream::routes as stream;
@@ -23,6 +24,9 @@ impl AppState {
     pub fn new(db: SqlitePool, config: Config) -> Self {
         let hls = Arc::new(Sessions::default());
         hls.spawn_reaper(config.hls_idle);
+        if let Some(every) = config.dvr_tick {
+            Recorder::new(db.clone(), config.data_dir.join("recordings")).spawn(every);
+        }
         Self {
             db,
             config: Arc::new(config),

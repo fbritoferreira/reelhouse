@@ -1,7 +1,11 @@
-use super::common::{admin_token, app, call, user_token};
+use std::time::{Duration, Instant};
+
+use super::common::{admin_token, app, app_with, call, user_token};
 use super::livetv::{add_m3u, guide, now, write_source};
+use super::stream::{have_ffmpeg, make_video};
 use axum::Router;
 use axum::http::StatusCode;
+use reelhouse_server::config::Config;
 use serde_json::{Value, json};
 
 /// An app with a News channel airing "Show" twice (Pilot, then Second) and "Other".
@@ -132,6 +136,79 @@ async fn rules_and_recordings_are_per_user() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (_, rules) = call(&app, "GET", "/api/v1/livetv/rules", Some(&admin), None).await;
     assert_eq!(rules[0], rule);
+}
+
+#[tokio::test]
+async fn dvr_records_into_the_recordings_library_and_keeps_last() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let stream = dir.path().join("live.ts");
+    make_video(&stream, 10);
+    let t = now();
+    let (m3u, epg) = write_source(
+        dir.path(),
+        &stream.to_string_lossy(),
+        &guide(&[
+            (t - 10, t + 2, "Show", "Pilot"),
+            (t + 2, t + 4, "Show", "Second"),
+        ]),
+    );
+    let data = dir.path().join("data");
+    let mut config = Config::for_tests(data.clone());
+    config.dvr_tick = Some(Duration::from_millis(200));
+    let app = app_with(config).await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, g) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/livetv/guide?start={t}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    let (status, _) = add_rule(
+        &app,
+        &admin,
+        json!({"kind": "series", "programme_id": g[0]["programmes"][0]["id"], "keep_last": 1}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let recs = loop {
+        let recs = recordings(&app, &admin).await;
+        if recs.len() == 2 && recs.iter().all(|r| r["status"] == "done") {
+            break recs;
+        }
+        assert!(Instant::now() < deadline, "not recorded: {recs:?}");
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    };
+    // keep_last = 1: the older episode's file and item are gone.
+    assert_eq!(recs[0]["item_id"], Value::Null);
+    let item = recs[1]["item_id"].as_i64().unwrap();
+
+    let (_, libs) = call(&app, "GET", "/api/v1/libraries", Some(&admin), None).await;
+    assert_eq!(libs[0]["name"], "Recordings");
+    assert_eq!(libs[0]["kind"], "movies");
+    let (_, items) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/libraries/{}/items", libs[0]["id"]),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(items.as_array().unwrap().len(), 1);
+    assert_eq!(items[0]["id"], item);
+    assert_eq!(items[0]["title"], "Show - Second");
+    assert!(items[0]["duration_s"].as_f64().unwrap() > 0.0);
+    let files: Vec<_> = std::fs::read_dir(data.join("recordings").join("Show"))
+        .unwrap()
+        .collect();
+    assert_eq!(files.len(), 1);
 }
 
 #[tokio::test]
