@@ -2,6 +2,7 @@
 
 mod auth;
 mod common;
+mod livetv;
 mod plex;
 mod progress;
 mod scan;

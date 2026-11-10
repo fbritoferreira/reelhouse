@@ -237,6 +237,7 @@ pub struct Recording {
     pub stop: i64,
     pub status: RecordingStatus,
     pub item_id: Option<i64>,
+}
 
 /// Rewrites Plex file paths before matching, for when the two servers mount media differently.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
+use crate::livetv::routes as livetv;
 use crate::stream::hls::Sessions;
 use crate::stream::routes as stream;
 use crate::{import, libraries, progress, users};
@@ -55,6 +56,17 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
+        .route(
+            "/api/v1/livetv/sources",
+            get(livetv::list_sources).post(livetv::create_source),
+        )
+        .route(
+            "/api/v1/livetv/sources/{id}/refresh",
+            post(livetv::refresh_source),
+        )
+        .route("/api/v1/livetv/channels", get(livetv::channels))
+        .route("/api/v1/livetv/channels/{id}/play", post(livetv::play))
+        .route("/api/v1/livetv/guide", get(livetv::guide))
         .route("/api/v1/import/plex", post(import::plex_import))
         .with_state(state);
     match web_dir {
