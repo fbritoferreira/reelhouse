@@ -340,6 +340,37 @@ pub async fn guide(
     Ok(Json(out))
 }
 
+/// The HTTP status a provider answers for `url`, without reading the stream. `None` for local
+/// files and when it does not answer at all.
+async fn provider_status(url: &str) -> Option<u16> {
+    if !url.starts_with("http") {
+        return None;
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .ok()?;
+    client
+        .get(url)
+        .send()
+        .await
+        .ok()
+        .map(|r| r.status().as_u16())
+}
+
+/// Plain words for a provider's refusal of a live stream, by HTTP status.
+fn refusal(status: u16) -> Option<&'static str> {
+    match status {
+        401 | 403 | 407 => Some("your provider won't play this channel on your account"),
+        404 | 410 => Some("your provider no longer carries this channel"),
+        429 => Some(
+            "your provider's limit on streams at once is reached; stop another stream and try again",
+        ),
+        500..=599 => Some("your provider's server isn't answering; try again in a minute"),
+        _ => None,
+    }
+}
+
 /// Remuxes the channel's stream into an HLS session.
 pub async fn play(
     State(state): State<AppState>,
@@ -354,11 +385,19 @@ pub async fn play(
     let session = state.hls.start(&url, method, u32::MAX, 0.0, &[])?;
     // Live sources fail at the far end often (dead channels, connection limits); say so now
     // rather than hand the player a playlist that never appears.
-    state
+    if let Err(why) = state
         .hls
         .ready(&session, std::time::Duration::from_secs(20))
         .await
-        .map_err(|why| ApiError::BadGateway(format!("the channel did not start: {why}")))?;
+    {
+        // ffmpeg names few HTTP refusals ("4XX Client Error"); ask the provider once more, now
+        // that nothing else holds a connection, and say what it answered.
+        let why = provider_status(&url).await.and_then(refusal).map_or_else(
+            || format!("the channel did not start: {why}"),
+            str::to_string,
+        );
+        return Err(ApiError::BadGateway(why));
+    }
     Ok(Json(PlaybackPlan {
         method,
         url: format!("/api/v1/hls/{session}/index.m3u8"),
@@ -578,4 +617,37 @@ pub async fn delete_recording(
         .execute(&state.db)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::refusal;
+
+    #[test]
+    fn provider_refusals_read_plainly() {
+        assert_eq!(
+            refusal(407),
+            Some("your provider won't play this channel on your account")
+        );
+        assert_eq!(
+            refusal(403),
+            Some("your provider won't play this channel on your account")
+        );
+        assert_eq!(
+            refusal(404),
+            Some("your provider no longer carries this channel")
+        );
+        assert_eq!(
+            refusal(429),
+            Some(
+                "your provider's limit on streams at once is reached; stop another stream and try again"
+            )
+        );
+        assert_eq!(
+            refusal(503),
+            Some("your provider's server isn't answering; try again in a minute")
+        );
+        assert_eq!(refusal(200), None);
+        assert_eq!(refusal(206), None);
+    }
 }
