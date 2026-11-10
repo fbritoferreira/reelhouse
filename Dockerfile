@@ -1,4 +1,5 @@
-FROM rust:1-bookworm AS build
+# Debian trixie: the prebuilt dioxus-cli needs glibc 2.39 or newer (bookworm ships 2.36).
+FROM rust:1-trixie AS build
 WORKDIR /src
 RUN rustup target add wasm32-unknown-unknown \
     && curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
@@ -7,7 +8,7 @@ COPY . .
 RUN cargo build --release -p reelhouse-server \
     && cd apps/reelhouse && dx build --platform web --features web --release
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
