@@ -4,8 +4,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use url::Url;
 
-const POSTER: &str = "https://image.tmdb.org/t/p/w500";
-const BACKDROP: &str = "https://image.tmdb.org/t/p/w1280";
+const IMAGES: &str = "https://image.tmdb.org/t/p/";
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Meta {
@@ -23,6 +22,7 @@ pub struct Tmdb {
     base: Url,
     /// `None` when talking to the Reelhouse metadata proxy, which adds the key itself.
     key: Option<String>,
+    images: Url,
     client: reqwest::Client,
 }
 
@@ -65,8 +65,24 @@ impl Tmdb {
         Self {
             base,
             key,
+            images: Url::parse(IMAGES).expect("valid TMDB image URL"),
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Downloads artwork from `images` instead of TMDB's CDN (tests).
+    pub fn with_image_base(mut self, images: Url) -> Self {
+        self.images = images;
+        self
+    }
+
+    fn image(&self, size: &str, path: Option<String>) -> Option<String> {
+        Some(
+            self.images
+                .join(&format!("{size}{}", path?))
+                .ok()?
+                .to_string(),
+        )
     }
 
     async fn get<T: for<'de> Deserialize<'de>>(
@@ -114,8 +130,8 @@ impl Tmdb {
             ),
             title: hit.title.or(hit.name),
             overview: hit.overview.filter(|o| !o.is_empty()),
-            poster_url: hit.poster_path.map(|p| format!("{POSTER}{p}")),
-            backdrop_url: hit.backdrop_path.map(|p| format!("{BACKDROP}{p}")),
+            poster_url: self.image("w500", hit.poster_path),
+            backdrop_url: self.image("w1280", hit.backdrop_path),
         }))
     }
 
@@ -137,7 +153,7 @@ impl Tmdb {
         Ok(self.get::<Episode>(&path, &[]).await?.map(|e| Meta {
             title: e.name,
             overview: e.overview.filter(|o| !o.is_empty()),
-            backdrop_url: e.still_path.map(|p| format!("{BACKDROP}{p}")),
+            backdrop_url: self.image("w1280", e.still_path),
             ..Default::default()
         }))
     }

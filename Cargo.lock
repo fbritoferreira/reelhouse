@@ -4768,6 +4768,7 @@ dependencies = [
  "argon2",
  "axum",
  "base64 0.22.1",
+ "futures",
  "http-body-util",
  "quick-xml",
  "rand 0.9.5",

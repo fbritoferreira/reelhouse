@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 const TMDB_BASE: &str = "https://api.themoviedb.org/";
+const TMDB_IMAGES: &str = "https://image.tmdb.org/t/p/";
 /// Shared proxy holding the project's TMDB key, cached at Cloudflare's edge (workers/metadata).
 const METADATA_PROXY: &str = "https://reelhouse-metadata.fbritoferreira.workers.dev/";
 
@@ -26,6 +27,8 @@ pub struct Config {
     pub tmdb_api_key: Option<String>,
     /// Where metadata lookups go; `None` turns metadata off (`REELHOUSE_METADATA_URL=off`).
     pub tmdb_base: Option<url::Url>,
+    /// Where artwork is downloaded from; `None` skips downloads (tests).
+    pub tmdb_image_base: Option<url::Url>,
     /// Built web app to serve at `/`, if any.
     pub web_dir: Option<PathBuf>,
     /// HLS sessions with no request for this long are stopped.
@@ -46,6 +49,7 @@ impl Config {
                 .into(),
             tmdb_api_key: tmdb_api_key.clone(),
             tmdb_base: metadata_base(tmdb_api_key.is_some())?,
+            tmdb_image_base: Some(TMDB_IMAGES.parse()?),
             web_dir: std::env::var("REELHOUSE_WEB_DIR").ok().map(PathBuf::from),
             hls_idle: Duration::from_secs(60),
             dvr_tick: Some(Duration::from_secs(10)),
@@ -58,6 +62,7 @@ impl Config {
             data_dir,
             tmdb_api_key: None,
             tmdb_base: None,
+            tmdb_image_base: None,
             web_dir: None,
             hls_idle: Duration::from_secs(60),
             dvr_tick: None,

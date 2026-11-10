@@ -55,6 +55,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/libraries/{id}/items", get(libraries::items))
         .route("/api/v1/items/{id}", get(libraries::item))
         .route("/api/v1/items/{id}/children", get(libraries::children))
+        .route("/api/v1/items/{id}/poster", get(libraries::poster))
+        .route("/api/v1/items/{id}/backdrop", get(libraries::backdrop))
         .route("/api/v1/items/{id}/playback", post(stream::playback))
         .route("/api/v1/items/{id}/file", get(stream::file))
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))

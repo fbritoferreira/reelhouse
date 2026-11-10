@@ -6,6 +6,17 @@ use reelhouse_core::ClientError;
 
 use crate::Route;
 
+/// Artwork stored on the server needs the session token, since `<img>` cannot send headers.
+/// Remote fallback URLs are used as they are.
+pub fn art_url(url: Option<String>) -> Option<String> {
+    let url = url?;
+    Some(if url.starts_with('/') {
+        crate::session::client().media_url(&url)
+    } else {
+        url
+    })
+}
+
 pub fn caption(item: &Item) -> String {
     match (item.kind, item.year, item.season_no, item.episode_no) {
         (ItemKind::Episode, _, Some(s), Some(e)) => format!("Season {s}, episode {e}"),
@@ -33,7 +44,7 @@ pub fn Poster(item: Item) -> Element {
     rsx! {
         Link { class: "poster", to: target(&item),
             div { class: "poster-art",
-                if let Some(url) = item.poster_url.clone().or(item.backdrop_url.clone()) {
+                if let Some(url) = art_url(item.poster_url.clone().or(item.backdrop_url.clone())) {
                     img { src: url, alt: "", loading: "lazy" }
                 } else {
                     span { class: "poster-fallback", "{item.title}" }
