@@ -357,6 +357,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
         let mut skip = skip.clone();
         let leave = save_and_leave.clone();
         move |e: KeyboardEvent| {
+            if e.key() == Key::Escape && crate::player::is_fullscreen() {
+                return crate::player::toggle_fullscreen();
+            }
             if e.key() == Key::Escape || e.key() == Key::GoBack || e.key() == Key::BrowserBack {
                 return leave();
             }
@@ -376,6 +379,11 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 Key::ArrowRight => {
                     e.prevent_default();
                     skip(SKIP_SECONDS);
+                }
+                Key::Character(c)
+                    if cfg!(target_arch = "wasm32") && c.eq_ignore_ascii_case("f") =>
+                {
+                    crate::player::toggle_fullscreen();
                 }
                 _ => {}
             }
@@ -481,6 +489,15 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                                 }
                             },
                             "Audio & subtitles"
+                        }
+                    }
+                    if cfg!(target_arch = "wasm32") {
+                        button {
+                            class: "player-tracks",
+                            "aria-label": if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" },
+                            title: "Full screen (F)",
+                            onclick: move |_| crate::player::toggle_fullscreen(),
+                            if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" }
                         }
                     }
                 }
