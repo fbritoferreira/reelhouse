@@ -3282,8 +3282,6 @@ dependencies = [
 [[package]]
 name = "manganis"
 version = "0.7.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ed2af894a724a0b6e521f9efe84f98cfdc74a4de6828efef77ffd3b1679fd52"
 dependencies = [
  "const-serialize 0.7.2",
  "const-serialize 0.8.0-alpha.0",
@@ -4386,6 +4384,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+
+[[package]]
 name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4741,6 +4745,8 @@ dependencies = [
  "dioxus",
  "futures-timer",
  "js-sys",
+ "manganis",
+ "qrcode",
  "reelhouse-api",
  "reelhouse-core",
  "wasm-bindgen",
@@ -4751,6 +4757,7 @@ dependencies = [
 name = "reelhouse-core"
 version = "0.0.1"
 dependencies = [
+ "futures",
  "reelhouse-api",
  "reqwest",
  "serde",

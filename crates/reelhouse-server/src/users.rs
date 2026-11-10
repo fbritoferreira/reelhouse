@@ -91,13 +91,7 @@ pub async fn login(
     if !verify_password(&req.password, &hash) {
         return Err(ApiError::Unauthorized);
     }
-    let token = new_token();
-    sqlx::query("INSERT INTO sessions (token_hash, user_id, created_at) VALUES (?, ?, ?)")
-        .bind(token_hash(&token))
-        .bind(id)
-        .bind(now())
-        .execute(&state.db)
-        .await?;
+    let token = new_session(&state.db, id).await?;
     Ok(Json(LoginResponse {
         token,
         user: User { id, name, is_admin },
@@ -165,4 +159,16 @@ pub async fn remove(
         return Err(ApiError::NotFound);
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Starts a session for `user_id` and returns its token. Only the token's hash is stored.
+pub async fn new_session(db: &sqlx::SqlitePool, user_id: i64) -> ApiResult<String> {
+    let token = new_token();
+    sqlx::query("INSERT INTO sessions (token_hash, user_id, created_at) VALUES (?, ?, ?)")
+        .bind(token_hash(&token))
+        .bind(user_id)
+        .bind(now())
+        .execute(db)
+        .await?;
+    Ok(token)
 }

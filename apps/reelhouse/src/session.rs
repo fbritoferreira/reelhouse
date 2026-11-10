@@ -33,14 +33,48 @@ fn save(key: &str, value: Option<&str>) {
     }
 }
 
-// ponytail: native builds keep the session in memory only; persist to a file when the TV app needs it.
+/// Native apps keep one small file per key in the app's private directory.
 #[cfg(not(target_arch = "wasm32"))]
-fn load(_key: &str) -> Option<String> {
-    None
+fn key_path(key: &str) -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "android")]
+    let dir = crate::player::files_dir()?;
+    #[cfg(not(target_os = "android"))]
+    let dir = std::env::var("HOME").ok()?;
+    Some(std::path::Path::new(&dir).join(format!(".{key}")))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save(_key: &str, _value: Option<&str>) {}
+fn load(key: &str) -> Option<String> {
+    std::fs::read_to_string(key_path(key)?)
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn save(key: &str, value: Option<&str>) {
+    if let Some(path) = key_path(key) {
+        let _ = match value {
+            Some(v) => std::fs::write(path, v),
+            None => std::fs::remove_file(path),
+        };
+    }
+}
+
+/// Native apps have no page origin; the user types the server address once.
+pub fn set_server(base: &str) {
+    let base = base.trim().trim_end_matches('/').to_string();
+    save(SERVER_KEY, Some(&base));
+    let mut s = use_session();
+    let token = s.peek().client.token().map(str::to_owned);
+    s.set(Session {
+        client: Client::new(base).with_token(token),
+        user: None,
+    });
+}
+
+pub fn needs_server() -> bool {
+    cfg!(not(target_arch = "wasm32")) && load(SERVER_KEY).is_none()
+}
 
 /// Web talks to the server that served it; native apps use the saved server address.
 fn server_base() -> String {

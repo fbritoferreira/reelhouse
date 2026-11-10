@@ -3,6 +3,7 @@
 mod artwork;
 mod auth;
 mod common;
+mod device;
 mod dvr;
 mod livetv;
 mod plex;

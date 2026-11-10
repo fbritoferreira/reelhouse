@@ -1,5 +1,6 @@
 [application]
 name = "reelhouse"
+android_manifest = "android/AndroidManifest.xml"
 
 [web.app]
 title = "Reelhouse"
@@ -11,3 +12,8 @@ publisher = "Reelhouse"
 # `dx serve` forwards API calls to a local reelhouse-server.
 [[web.proxy]]
 backend = "http://127.0.0.1:8420/api/"
+
+[android]
+min_sdk = 24
+compile_sdk = 35
+target_sdk = 35
