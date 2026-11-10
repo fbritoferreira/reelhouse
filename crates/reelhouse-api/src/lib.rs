@@ -181,6 +181,13 @@ pub struct Programme {
     pub description: Option<String>,
 }
 
+/// A playlist's `group-title` and how many channels it holds; `None` collects the ungrouped.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ChannelGroup {
+    pub name: Option<String>,
+    pub channels: i64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GuideChannel {
     pub channel: Channel,

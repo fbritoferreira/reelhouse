@@ -61,6 +61,8 @@ const SPATIAL_NAVIGATION: &str = r#"
     if (cur && cur.tagName === 'INPUT' && dir[0] !== 0) return;
     // In the player, Left/Right seek; the player handles them.
     if (dir[0] !== 0 && document.querySelector('[data-rh-seek]')) return;
+    // The live player takes every arrow: Up and Down change channel.
+    if (document.querySelector('[data-rh-keys]')) return;
     const from = (cur && cur !== document.body) ? cur.getBoundingClientRect() : { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 };
     const cx = from.left + from.width / 2, cy = from.top + from.height / 2;
     let best = null, bestScore = Infinity;

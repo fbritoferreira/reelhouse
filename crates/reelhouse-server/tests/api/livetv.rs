@@ -162,6 +162,49 @@ async fn m3u_refresh_loads_channels_and_guide() {
 }
 
 #[tokio::test]
+async fn groups_list_counts_and_filter_the_guide() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+
+    let (status, groups) = call(&app, "GET", "/api/v1/livetv/groups", Some(&admin), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        groups,
+        json!([{"name": "UK", "channels": 1}, {"name": null, "channels": 1}])
+    );
+
+    let (_, uk) = call(
+        &app,
+        "GET",
+        "/api/v1/livetv/guide?group=UK",
+        Some(&admin),
+        None,
+    )
+    .await;
+    let names: Vec<&str> = uk
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["channel"]["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["News"]);
+    // An empty group asks for the channels without one.
+    let (_, rest) = call(
+        &app,
+        "GET",
+        "/api/v1/livetv/guide?group=",
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(rest[0]["channel"]["name"], "Music");
+    assert_eq!(rest.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn refresh_keeps_channel_ids() {
     let dir = tempfile::tempdir().unwrap();
     let (m3u, epg) = write_source(dir.path(), "http://example.invalid/n.ts", &guide(&[]));

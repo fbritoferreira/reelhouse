@@ -470,3 +470,72 @@ html.tv {
 
 .tv .reel-button { font-size: 0.875rem; padding: 0.45em 1.1em 0.45em 0.55em; }
 .tv .reel-icon { font-size: 0.95rem; padding: 0.4em; }
+
+/* ---- Live TV ------------------------------------------------------------------------------
+   Groups down the left, the chosen group's channels beside them: what is on now with how far
+   it has run, and what follows. */
+
+.live-body { display: grid; grid-template-columns: minmax(12rem, 18rem) 1fr; gap: clamp(1rem, 2.5vw, 2.5rem); align-items: start; }
+.live-groups {
+  display: flex; flex-direction: column; gap: 2px;
+  position: sticky; top: 5rem; max-height: calc(100vh - 7rem); overflow-y: auto; padding: 4px;
+}
+.live-group {
+  justify-content: space-between; border-radius: 8px; background: transparent; color: var(--muted);
+  font-weight: 500; padding: 0.55em 0.9em; white-space: normal; text-align: left;
+}
+.live-group.current { background: var(--surface-raised); color: var(--text); }
+.live-group.current .live-group-count { color: var(--bulb); }
+.live-group-count { font-variant-numeric: tabular-nums; font-size: var(--t-small); }
+
+.live-channels { list-style: none; margin: 0; padding: 4px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.channel {
+  display: grid; grid-template-columns: 3.2em 4.5rem minmax(0, 1fr) minmax(0, 14rem);
+  align-items: center; gap: 1rem; padding: 0.6rem 0.9rem; border-radius: var(--radius);
+}
+.channel:hover { background: rgba(239, 230, 220, 0.05); }
+.channel-number { font-family: var(--display); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.channel-logo {
+  width: 4.5rem; aspect-ratio: 16 / 10; border-radius: 6px; background: var(--surface);
+  display: grid; place-items: center; overflow: hidden;
+}
+.channel-logo img { max-width: 82%; max-height: 78%; object-fit: contain; }
+.channel-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.channel-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-now { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-meter { display: flex; align-items: center; gap: 0.6rem; font-size: var(--t-small); }
+.channel-meter .progress-track { position: static; flex: 0 0 7rem; }
+.channel-next { display: flex; gap: 0.5rem; font-size: var(--t-small); min-width: 0; }
+.channel-next span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-next-time { font-variant-numeric: tabular-nums; color: var(--text); }
+
+.live-player .live-banner {
+  position: absolute; left: var(--gutter); right: var(--gutter); bottom: 2.5rem;
+  display: flex; flex-direction: column; gap: 0.4rem; padding: 1.25rem 1.5rem;
+  background: rgba(21, 13, 23, 0.86); border-radius: calc(var(--radius) + 4px);
+  transition: opacity 450ms ease;
+}
+.live-player.idle .live-banner { opacity: 0; }
+.live-player:focus { outline: none; box-shadow: none; }
+.live-banner p { margin: 0; }
+.live-banner-channel { display: flex; align-items: center; gap: 0.9rem; }
+.live-banner-name { font-family: var(--display); font-weight: 700; font-size: var(--t-h2); }
+.live-banner-now { font-size: var(--t-lead); font-weight: 600; }
+.live-banner .channel-meter .progress-track { flex-basis: 12rem; }
+.live-banner-hint { font-size: var(--t-small); }
+
+@media (max-width: 760px) {
+  .live-body { grid-template-columns: 1fr; }
+  .live-groups { position: static; flex-direction: row; overflow-x: auto; max-height: none; }
+  .live-group { white-space: nowrap; }
+  .channel { grid-template-columns: 2.4em 3.5rem minmax(0, 1fr); }
+  .channel-next { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .live-player .live-banner { transition: none; } }
+
+.tv .live-body { grid-template-columns: 200px 1fr; gap: 1.25rem; }
+.tv .live-groups { top: 3.5rem; max-height: calc(100vh - 5rem); }
+.tv .live-group { font-size: 0.8125rem; padding: 0.4em 0.75em; }
+.tv .channel { grid-template-columns: 2.4em 3.6rem minmax(0, 1fr) minmax(0, 10rem); gap: 0.75rem; padding: 0.4rem 0.6rem; }
+.tv .channel-logo { width: 3.6rem; }
+.tv .live-banner { bottom: 1.5rem; padding: 0.9rem 1.1rem; }

@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
-use reelhouse_api::{Library, LibraryKind, NewLibrary, NewUser};
+use reelhouse_api::{
+    Library, LibraryKind, NewLibrary, NewTvSource, NewUser, TvSource, TvSourceKind,
+};
 
 use crate::session::client;
 use crate::widgets::describe;
@@ -126,6 +128,7 @@ pub fn Admin() -> Element {
                     button { class: "primary", r#type: "submit", "Add person" }
                 }
             }
+            TvSources { status }
             p { class: "quiet credit",
                 "Metadata and artwork from "
                 a { href: "https://www.themoviedb.org", target: "_blank", rel: "noopener", "TMDB" }
@@ -173,6 +176,139 @@ fn LibraryRow(lib: Library, status: Signal<Option<String>>) -> Element {
                     }
                 },
                 if scanning() { "Scanning…" } else { "Scan" }
+            }
+        }
+    }
+}
+
+/// IPTV sources: an M3U playlist or an Xtream Codes login, each with an optional guide.
+#[component]
+fn TvSources(status: Signal<Option<String>>) -> Element {
+    let mut sources = use_resource(|| async move { client().tv_sources().await });
+    let mut name = use_signal(String::new);
+    let mut kind = use_signal(|| TvSourceKind::M3u);
+    let mut url = use_signal(String::new);
+    let mut username = use_signal(String::new);
+    let mut password = use_signal(String::new);
+    let mut epg = use_signal(String::new);
+    let mut adding = use_signal(|| false);
+    let optional = |s: String| Some(s.trim().to_string()).filter(|s| !s.is_empty());
+    let add = move |e: FormEvent| async move {
+        e.prevent_default();
+        adding.set(true);
+        let new = NewTvSource {
+            name: optional(name()).unwrap_or_else(|| "Live TV".into()),
+            kind: kind(),
+            url: url().trim().to_string(),
+            username: optional(username()),
+            password: optional(password()),
+            epg_url: optional(epg()),
+        };
+        match client().create_tv_source(&new).await {
+            Ok(src) => {
+                for mut field in [name, url, username, password, epg] {
+                    field.set(String::new());
+                }
+                status.set(Some(format!(
+                    "Added {}. Loading its channels and guide now.",
+                    src.name
+                )));
+                sources.restart();
+                status.set(Some(refresh_message(
+                    &src.name,
+                    client().refresh_tv_source(src.id).await,
+                )));
+            }
+            Err(e) => status.set(Some(describe(&e))),
+        }
+        adding.set(false);
+    };
+    rsx! {
+        section { class: "panel",
+            h2 { "Live TV" }
+            match &*sources.read() {
+                Some(Ok(list)) if list.is_empty() => rsx! { p { class: "quiet", "No sources yet. Add your provider's M3U playlist, or its Xtream Codes login." } },
+                Some(Ok(list)) => rsx! {
+                    ul { class: "list",
+                        for src in list.clone() {
+                            SourceRow { key: "{src.id}", src, status }
+                        }
+                    }
+                },
+                Some(Err(e)) => rsx! { p { class: "notice", "{describe(e)}" } },
+                None => rsx! {},
+            }
+            form { class: "form-grid", onsubmit: add,
+                label { "Name"
+                    input { placeholder: "My provider", value: "{name}", oninput: move |e| name.set(e.value()) }
+                }
+                label { "Type"
+                    select {
+                        onchange: move |e| kind.set(if e.value() == "xtream" { TvSourceKind::Xtream } else { TvSourceKind::M3u }),
+                        option { value: "m3u", "M3U playlist" }
+                        option { value: "xtream", "Xtream Codes login" }
+                    }
+                }
+                label { if kind() == TvSourceKind::Xtream { "Server address" } else { "Playlist address" }
+                    input { placeholder: "https://", value: "{url}", oninput: move |e| url.set(e.value()) }
+                }
+                if kind() == TvSourceKind::Xtream {
+                    label { "Username"
+                        input { value: "{username}", autocomplete: "off", oninput: move |e| username.set(e.value()) }
+                    }
+                    label { "Password"
+                        input { r#type: "password", value: "{password}", autocomplete: "off", oninput: move |e| password.set(e.value()) }
+                    }
+                }
+                label { "Guide address (optional)"
+                    input { placeholder: "XMLTV, if the playlist does not name one", value: "{epg}", oninput: move |e| epg.set(e.value()) }
+                }
+                button { class: "primary", r#type: "submit", disabled: adding(),
+                    if adding() { "Adding…" } else { "Add source" }
+                }
+            }
+        }
+    }
+}
+
+fn refresh_message(
+    name: &str,
+    r: Result<reelhouse_api::RefreshReport, reelhouse_core::ClientError>,
+) -> String {
+    match r {
+        Ok(r) => format!(
+            "{name}: {} channels, {} guide entries.",
+            r.channels, r.programmes
+        ),
+        Err(e) => format!("{name}: {}", describe(&e)),
+    }
+}
+
+#[component]
+fn SourceRow(src: TvSource, status: Signal<Option<String>>) -> Element {
+    let mut refreshing = use_signal(|| false);
+    let id = src.id;
+    let name = src.name.clone();
+    let kind = match src.kind {
+        TvSourceKind::M3u => "M3U",
+        TvSourceKind::Xtream => "Xtream",
+    };
+    rsx! {
+        li {
+            span { class: "list-name", "{src.name}" }
+            span { class: "tag", "{kind}" }
+            button {
+                class: "secondary",
+                disabled: refreshing(),
+                onclick: move |_| {
+                    let name = name.clone();
+                    async move {
+                        refreshing.set(true);
+                        status.set(Some(refresh_message(&name, client().refresh_tv_source(id).await)));
+                        refreshing.set(false);
+                    }
+                },
+                if refreshing() { "Refreshing…" } else { "Refresh" }
             }
         }
     }

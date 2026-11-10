@@ -22,6 +22,30 @@ fn extinf(body: &str) -> (Vec<(&str, &str)>, &str) {
     }
 }
 
+/// The guide a playlist names in its `#EXTM3U` header (`url-tvg` or `x-tvg-url`).
+pub fn epg_url(text: &str) -> Option<String> {
+    let header = text.lines().next()?.trim().strip_prefix("#EXTM3U")?;
+    let (attrs, _) = extinf(header);
+    attrs
+        .iter()
+        .find(|(k, v)| (*k == "url-tvg" || *k == "x-tvg-url") && !v.is_empty())
+        .map(|(_, v)| v.to_string())
+}
+
+/// Films and series that providers mix into their playlists; they are not channels.
+fn is_on_demand(url: &str) -> bool {
+    let path = url
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(url)
+        .to_ascii_lowercase();
+    path.contains("/movie/")
+        || path.contains("/series/")
+        || [".mp4", ".mkv", ".avi", ".m4v", ".mov"]
+            .iter()
+            .any(|ext| path.ends_with(ext))
+}
+
 pub fn parse(text: &str) -> Vec<SourceChannel> {
     let mut out = Vec::new();
     let mut pending: Option<SourceChannel> = None;
@@ -49,6 +73,7 @@ pub fn parse(text: &str) -> Vec<SourceChannel> {
         } else if !line.is_empty()
             && !line.starts_with('#')
             && let Some(mut c) = pending.take()
+            && !is_on_demand(line)
         {
             c.stream_url = line.to_string();
             out.push(c);
@@ -102,5 +127,30 @@ http://stream/plain.m3u8
         let chans = parse("#EXTINF:-1 tvg-name=\"Named\",\nhttp://s/1\r\n");
         assert_eq!(chans[0].name, "Named");
         assert_eq!(chans[0].stream_url, "http://s/1");
+    }
+
+    #[test]
+    fn skips_films_and_series() {
+        let chans = parse(
+            "#EXTINF:-1,Live\nhttp://h/live/u/p/1\n\
+             #EXTINF:-1,Film\nhttp://h/movie/u/p/2.mp4\n\
+             #EXTINF:-1,Episode\nhttp://h/series/u/p/3.mkv\n\
+             #EXTINF:-1,Bare file\nhttp://h/u/p/4.avi\n",
+        );
+        let names: Vec<&str> = chans.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["Live"]);
+    }
+
+    #[test]
+    fn reads_the_guide_url_from_the_header() {
+        assert_eq!(
+            epg_url(PLAYLIST).as_deref(),
+            Some("http://example.com/epg.xml")
+        );
+        assert_eq!(
+            epg_url("#EXTM3U x-tvg-url=\"http://g/x.xml\"\n").as_deref(),
+            Some("http://g/x.xml")
+        );
+        assert_eq!(epg_url("#EXTM3U\n"), None);
     }
 }

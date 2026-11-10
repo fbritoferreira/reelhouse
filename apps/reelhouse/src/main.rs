@@ -12,7 +12,9 @@ mod tv;
 mod widgets;
 
 use dioxus::prelude::*;
-use pages::{Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, Login, Play, Setup};
+use pages::{
+    Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, LiveTv, Login, Play, Setup, Watch,
+};
 
 const STYLE: Asset = asset!("/assets/main.css");
 
@@ -32,6 +34,8 @@ pub enum Route {
         LinkDevice { code: String },
         #[route("/downloads")]
         Downloads {},
+        #[route("/live")]
+        LiveTv {},
     #[end_layout]
     #[route("/login")]
     Login {},
@@ -39,6 +43,8 @@ pub enum Route {
     Setup {},
     #[route("/play/:id")]
     Play { id: i64 },
+    #[route("/watch/:id?:group")]
+    Watch { id: i64, group: String },
 }
 
 fn main() {
@@ -119,6 +125,7 @@ fn Shell() -> Element {
                         Link { key: "{lib.id}", class: here(Route::LibraryPage { id: lib.id }), to: Route::LibraryPage { id: lib.id }, "{lib.name}" }
                     }
                 }
+                Link { class: here(Route::LiveTv {}), to: Route::LiveTv {}, "Live TV" }
                 if cfg!(not(target_arch = "wasm32")) {
                     Link { class: here(Route::Downloads {}), to: Route::Downloads {}, "Downloads" }
                 }
