@@ -115,6 +115,11 @@ pub fn Admin() -> Element {
                     button { class: "primary", r#type: "submit", "Add person" }
                 }
             }
+            p { class: "quiet credit",
+                "Metadata and artwork from "
+                a { href: "https://www.themoviedb.org", target: "_blank", rel: "noopener", "TMDB" }
+                ". This product uses the TMDB API but is not endorsed or certified by TMDB."
+            }
         }
     }
 }

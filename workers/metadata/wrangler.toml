@@ -1,0 +1,8 @@
+name = "reelhouse-metadata"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-10-13"
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
+
+# TMDB_API_KEY is a secret: `wrangler secret put TMDB_API_KEY`.

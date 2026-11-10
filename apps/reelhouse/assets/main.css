@@ -185,3 +185,6 @@ input, select {
   .poster-art { transition: transform 160ms ease-out; }
   .poster:focus .poster-art { transform: scale(1.04); }
 }
+
+.credit { font-size: 0.875rem; }
+.credit a { text-decoration: underline; text-underline-offset: 3px; }

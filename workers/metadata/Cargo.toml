@@ -1,0 +1,16 @@
+[package]
+name = "reelhouse-metadata"
+description = "Cloudflare Worker that answers Reelhouse servers' TMDB lookups with a shared key and an edge cache."
+publish = false
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+
+# Built for Cloudflare Workers, outside the main workspace (wasm32 only, its own lockfile).
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+worker = "=0.8.7"
