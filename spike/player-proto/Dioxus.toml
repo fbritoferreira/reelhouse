@@ -1,0 +1,9 @@
+[application]
+name = "player-proto"
+
+[web.app]
+title = "Reelhouse player prototype"
+
+[bundle]
+identifier = "dev.reelhouse.proto"
+publisher = "Reelhouse"

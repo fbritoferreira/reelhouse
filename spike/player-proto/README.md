@@ -23,4 +23,4 @@ sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "emulator" "platforms;andro
 python3 -m http.server 8000 -d media        # serve to devices on the LAN
 ```
 
-HLS stream: https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
+HLS stream: https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8 (sends CORS headers; Apple's bipbop stream does not, so browsers cannot load it)
