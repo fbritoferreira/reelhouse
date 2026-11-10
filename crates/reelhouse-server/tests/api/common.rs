@@ -13,7 +13,12 @@ pub async fn app_with(config: Config) -> Router {
 
 pub async fn app_and_db(config: Config) -> (Router, sqlx::SqlitePool) {
     let db = reelhouse_server::db::open_memory().await.unwrap();
-    (router(AppState::new(db.clone(), config)), db)
+    (app_on(db.clone(), config), db)
+}
+
+/// A router over an existing database, e.g. to rescan the same data with a different config.
+pub fn app_on(db: sqlx::SqlitePool, config: Config) -> Router {
+    router(AppState::new(db, config))
 }
 
 pub async fn app() -> Router {

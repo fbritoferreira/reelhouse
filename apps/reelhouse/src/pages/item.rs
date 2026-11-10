@@ -4,7 +4,7 @@ use reelhouse_core::timefmt::format_time;
 
 use crate::Route;
 use crate::session::client;
-use crate::widgets::{LoadError, Poster, caption, describe};
+use crate::widgets::{LoadError, Poster, art_url, caption, describe};
 
 #[component]
 pub fn ItemPage(id: i64) -> Element {
@@ -30,7 +30,7 @@ pub fn ItemPage(id: i64) -> Element {
             let cap = caption(item);
             rsx! {
                 article { class: "detail",
-                    if let Some(bg) = item.backdrop_url.clone() {
+                    if let Some(bg) = art_url(item.backdrop_url.clone()) {
                         div { class: "backdrop", style: "background-image: url('{bg}')" }
                     }
                     div { class: "detail-body",

@@ -1,5 +1,6 @@
 //! API integration tests, one module per area.
 
+mod artwork;
 mod auth;
 mod common;
 mod dvr;

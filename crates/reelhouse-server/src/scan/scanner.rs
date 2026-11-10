@@ -64,6 +64,7 @@ pub async fn scan_library(
     db: &SqlitePool,
     lib: &Library,
     tmdb: Option<&Tmdb>,
+    images: bool,
 ) -> Result<ScanReport> {
     let mut report = ScanReport {
         added: 0,
@@ -98,18 +99,6 @@ pub async fn scan_library(
                     episode,
                 }) => {
                     let show_id = parent_item(db, lib.id, "show", None, &show, None).await?;
-                    if let Some(t) = tmdb {
-                        let (known,): (Option<i64>,) =
-                            sqlx::query_as("SELECT tmdb_id FROM items WHERE id = ?")
-                                .bind(show_id)
-                                .fetch_one(db)
-                                .await?;
-                        if known.is_none()
-                            && let Ok(Some(meta)) = t.show(&show).await
-                        {
-                            apply_meta(db, show_id, &meta, false).await?;
-                        }
-                    }
                     let season_id = parent_item(
                         db,
                         lib.id,
@@ -132,7 +121,7 @@ pub async fn scan_library(
                 _ => continue,
             },
         };
-        let id = sqlx::query(
+        sqlx::query(
             "INSERT INTO items (library_id, kind, parent_id, title, year, season_no, episode_no, file_path, \
              duration_s, container, video_codec, audio_codec, height, added_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -152,30 +141,8 @@ pub async fn scan_library(
         .bind(info.height)
         .bind(now())
         .execute(db)
-        .await?
-        .last_insert_rowid();
+        .await?;
         report.added += 1;
-        if let Some(t) = tmdb {
-            let meta = match (kind, season, episode) {
-                ("episode", Some(s), Some(e)) => {
-                    let (show_tmdb,): (Option<i64>,) = sqlx::query_as(
-                        "SELECT show.tmdb_id FROM items ep JOIN items season ON season.id = ep.parent_id \
-                         JOIN items show ON show.id = season.parent_id WHERE ep.id = ?",
-                    )
-                    .bind(id)
-                    .fetch_one(db)
-                    .await?;
-                    match show_tmdb {
-                        Some(sid) => t.episode(sid, s, e).await.ok().flatten(),
-                        None => None,
-                    }
-                }
-                _ => t.movie(&title, year).await.ok().flatten(),
-            };
-            if let Some(meta) = meta {
-                apply_meta(db, id, &meta, kind == "episode").await?;
-            }
-        }
     }
 
     let stored: Vec<(i64, String)> = sqlx::query_as(
@@ -203,11 +170,12 @@ pub async fn scan_library(
         .execute(db)
         .await?;
     }
+    super::enrich::enrich(db, lib.id, tmdb, images).await?;
     Ok(report)
 }
 
 /// Fills metadata columns. Episode titles are prefixed with their SxxEyy code.
-async fn apply_meta(db: &SqlitePool, id: i64, meta: &Meta, episode: bool) -> Result<()> {
+pub(super) async fn apply_meta(db: &SqlitePool, id: i64, meta: &Meta, episode: bool) -> Result<()> {
     let title = match (&meta.title, episode) {
         (Some(t), true) => {
             let (code,): (String,) = sqlx::query_as(
