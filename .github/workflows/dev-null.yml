@@ -1,0 +1,16 @@
+name: dev-null.sh
+
+# Posts each merged pull request to https://dev-null.sh/@fbritoferreira.
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  post:
+    if: github.event.pull_request.merged == true && github.head_ref != 'chore/dev-null'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dev-null-sh/dev-null.sh/.github/actions/commit@production
+        with:
+          body: "Merged in ${{ github.event.repository.name }}: ${{ github.event.pull_request.title }} ${{ github.event.pull_request.html_url }}"
+          ssh-key: ${{ secrets.DEV_NULL_SSH_KEY }}
