@@ -2,11 +2,14 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+const TMDB_BASE: &str = "https://api.themoviedb.org/";
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub bind: SocketAddr,
     pub data_dir: PathBuf,
     pub tmdb_api_key: Option<String>,
+    pub tmdb_base: url::Url,
     /// HLS sessions with no request for this long are stopped.
     pub hls_idle: Duration,
 }
@@ -21,6 +24,7 @@ impl Config {
                 .unwrap_or_else(|_| "./data".into())
                 .into(),
             tmdb_api_key: std::env::var("TMDB_API_KEY").ok().filter(|k| !k.is_empty()),
+            tmdb_base: TMDB_BASE.parse()?,
             hls_idle: Duration::from_secs(60),
         })
     }
@@ -30,6 +34,7 @@ impl Config {
             bind: "127.0.0.1:0".parse().unwrap(),
             data_dir,
             tmdb_api_key: None,
+            tmdb_base: TMDB_BASE.parse().unwrap(),
             hls_idle: Duration::from_secs(60),
         }
     }

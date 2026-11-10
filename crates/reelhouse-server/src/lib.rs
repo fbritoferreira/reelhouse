@@ -6,5 +6,6 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod libraries;
+pub mod metadata;
 pub mod scan;
 pub mod users;

@@ -10,6 +10,7 @@ use sqlx::SqlitePool;
 use super::naming::{Parsed, VIDEO_EXTENSIONS, parse_episode, parse_movie};
 use super::probe::probe;
 use crate::auth::now;
+use crate::metadata::tmdb::{Meta, Tmdb};
 
 fn video_files(root: &Path) -> Vec<PathBuf> {
     walkdir::WalkDir::new(root)
@@ -59,7 +60,11 @@ async fn parent_item(
         .last_insert_rowid())
 }
 
-pub async fn scan_library(db: &SqlitePool, lib: &Library) -> Result<ScanReport> {
+pub async fn scan_library(
+    db: &SqlitePool,
+    lib: &Library,
+    tmdb: Option<&Tmdb>,
+) -> Result<ScanReport> {
     let mut report = ScanReport {
         added: 0,
         updated: 0,
@@ -93,6 +98,18 @@ pub async fn scan_library(db: &SqlitePool, lib: &Library) -> Result<ScanReport> 
                     episode,
                 }) => {
                     let show_id = parent_item(db, lib.id, "show", None, &show, None).await?;
+                    if let Some(t) = tmdb {
+                        let (known,): (Option<i64>,) =
+                            sqlx::query_as("SELECT tmdb_id FROM items WHERE id = ?")
+                                .bind(show_id)
+                                .fetch_one(db)
+                                .await?;
+                        if known.is_none()
+                            && let Ok(Some(meta)) = t.show(&show).await
+                        {
+                            apply_meta(db, show_id, &meta, false).await?;
+                        }
+                    }
                     let season_id = parent_item(
                         db,
                         lib.id,
@@ -115,7 +132,7 @@ pub async fn scan_library(db: &SqlitePool, lib: &Library) -> Result<ScanReport> 
                 _ => continue,
             },
         };
-        sqlx::query(
+        let id = sqlx::query(
             "INSERT INTO items (library_id, kind, parent_id, title, year, season_no, episode_no, file_path, \
              duration_s, container, video_codec, audio_codec, height, added_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -135,8 +152,30 @@ pub async fn scan_library(db: &SqlitePool, lib: &Library) -> Result<ScanReport> 
         .bind(info.height)
         .bind(now())
         .execute(db)
-        .await?;
+        .await?
+        .last_insert_rowid();
         report.added += 1;
+        if let Some(t) = tmdb {
+            let meta = match (kind, season, episode) {
+                ("episode", Some(s), Some(e)) => {
+                    let (show_tmdb,): (Option<i64>,) = sqlx::query_as(
+                        "SELECT show.tmdb_id FROM items ep JOIN items season ON season.id = ep.parent_id \
+                         JOIN items show ON show.id = season.parent_id WHERE ep.id = ?",
+                    )
+                    .bind(id)
+                    .fetch_one(db)
+                    .await?;
+                    match show_tmdb {
+                        Some(sid) => t.episode(sid, s, e).await.ok().flatten(),
+                        None => None,
+                    }
+                }
+                _ => t.movie(&title, year).await.ok().flatten(),
+            };
+            if let Some(meta) = meta {
+                apply_meta(db, id, &meta, kind == "episode").await?;
+            }
+        }
     }
 
     let stored: Vec<(i64, String)> = sqlx::query_as(
@@ -165,4 +204,37 @@ pub async fn scan_library(db: &SqlitePool, lib: &Library) -> Result<ScanReport> 
         .await?;
     }
     Ok(report)
+}
+
+/// Fills metadata columns. Episode titles are prefixed with their SxxEyy code.
+async fn apply_meta(db: &SqlitePool, id: i64, meta: &Meta, episode: bool) -> Result<()> {
+    let title = match (&meta.title, episode) {
+        (Some(t), true) => {
+            let (code,): (String,) = sqlx::query_as(
+                "SELECT printf('S%02dE%02d', season_no, episode_no) FROM items WHERE id = ?",
+            )
+            .bind(id)
+            .fetch_one(db)
+            .await?;
+            Some(format!("{code} · {t}"))
+        }
+        (t, _) => t.clone(),
+    };
+    sqlx::query(
+        "UPDATE items SET title = COALESCE(?, title), year = COALESCE(?, year), tmdb_id = COALESCE(?, tmdb_id), \
+         imdb_id = COALESCE(?, imdb_id), tvdb_id = COALESCE(?, tvdb_id), overview = COALESCE(?, overview), \
+         poster_url = COALESCE(?, poster_url), backdrop_url = COALESCE(?, backdrop_url) WHERE id = ?",
+    )
+    .bind(title)
+    .bind(meta.year)
+    .bind(meta.tmdb_id)
+    .bind(&meta.imdb_id)
+    .bind(meta.tvdb_id)
+    .bind(&meta.overview)
+    .bind(&meta.poster_url)
+    .bind(&meta.backdrop_url)
+    .bind(id)
+    .execute(db)
+    .await?;
+    Ok(())
 }

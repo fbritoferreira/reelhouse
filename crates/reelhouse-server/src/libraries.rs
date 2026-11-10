@@ -7,6 +7,7 @@ use sqlx::FromRow;
 use crate::app::AppState;
 use crate::auth::{AdminUser, CurrentUser};
 use crate::error::{ApiError, ApiResult};
+use crate::metadata::tmdb::Tmdb;
 use crate::scan::scanner::scan_library;
 
 fn kind_str(k: LibraryKind) -> &'static str {
@@ -84,7 +85,12 @@ pub async fn scan(
     Path(id): Path<i64>,
 ) -> ApiResult<Json<ScanReport>> {
     let lib = get_library(&state, id).await?;
-    Ok(Json(scan_library(&state.db, &lib).await?))
+    let tmdb = state
+        .config
+        .tmdb_api_key
+        .clone()
+        .map(|key| Tmdb::new(state.config.tmdb_base.clone(), key));
+    Ok(Json(scan_library(&state.db, &lib, tmdb.as_ref()).await?))
 }
 
 #[derive(FromRow)]

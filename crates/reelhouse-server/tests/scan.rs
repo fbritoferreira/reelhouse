@@ -211,3 +211,52 @@ async fn rescan_is_idempotent() {
     .await;
     assert_eq!(report["added"], 0);
 }
+
+#[tokio::test]
+async fn scan_fills_tmdb_metadata() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    if !have_ffmpeg() {
+        return;
+    }
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/3/search/movie"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": [{"id": 949, "title": "Heat", "release_date": "1995-12-15", "overview": "Obsessive crime.", "poster_path": "/h.jpg"}]})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/3/movie/949/external_ids"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"imdb_id": "tt0113277"})))
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    make_video(&dir.path().join("Heat (1995).mp4"));
+    let mut config = reelhouse_server::config::Config::for_tests(std::env::temp_dir());
+    config.tmdb_api_key = Some("k".into());
+    config.tmdb_base = format!("{}/", server.uri()).parse().unwrap();
+    let app = common::app_with(config).await;
+    let token = admin_token(&app).await;
+    let lib = library(&app, &token, "movies", dir.path()).await;
+    call(
+        &app,
+        "POST",
+        &format!("/api/v1/libraries/{lib}/scan"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let (_, items) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/libraries/{lib}/items"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(items[0]["overview"], "Obsessive crime.");
+    assert_eq!(
+        items[0]["poster_url"],
+        "https://image.tmdb.org/t/p/w500/h.jpg"
+    );
+}
