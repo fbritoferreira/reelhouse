@@ -2,6 +2,8 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod art;
+#[cfg(not(target_arch = "wasm32"))]
+mod downloads;
 mod pages;
 mod player;
 mod session;
@@ -9,7 +11,7 @@ mod tv;
 mod widgets;
 
 use dioxus::prelude::*;
-use pages::{Admin, Home, ItemPage, LibraryPage, LinkDevice, Login, Play, Setup};
+use pages::{Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, Login, Play, Setup};
 
 const STYLE: Asset = asset!("/assets/main.css");
 
@@ -27,6 +29,8 @@ pub enum Route {
         Admin {},
         #[route("/link?:code")]
         LinkDevice { code: String },
+        #[route("/downloads")]
+        Downloads {},
     #[end_layout]
     #[route("/login")]
     Login {},
@@ -113,6 +117,9 @@ fn Shell() -> Element {
                     for lib in libs.clone() {
                         Link { key: "{lib.id}", class: here(Route::LibraryPage { id: lib.id }), to: Route::LibraryPage { id: lib.id }, "{lib.name}" }
                     }
+                }
+                if cfg!(not(target_arch = "wasm32")) {
+                    Link { class: here(Route::Downloads {}), to: Route::Downloads {}, "Downloads" }
                 }
                 // Linking devices and managing the server are browser tasks; the TV app keeps to watching.
                 if cfg!(target_arch = "wasm32") {

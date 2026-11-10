@@ -47,7 +47,12 @@ fn Playable(item: Item) -> Element {
     rsx! {
         Hero { backdrop: item.backdrop_url.clone(), title, above,
             Facts { item: item.clone() }
-            div { class: "hero-actions", PlayButton { item: item.clone() } }
+            div { class: "hero-actions",
+                PlayButton { item: item.clone() }
+                if cfg!(not(target_arch = "wasm32")) {
+                    DownloadButton { item: item.clone() }
+                }
+            }
             if let Some(o) = item.overview.clone() {
                 p { class: "overview", "{o}" }
             }
@@ -162,4 +167,63 @@ fn EpisodeRow(ep: Item, fallback_art: Option<String>) -> Element {
             }
         }
     }
+}
+
+/// Download, its progress, or Remove once it is on the device.
+#[cfg(not(target_arch = "wasm32"))]
+#[component]
+fn DownloadButton(item: Item) -> Element {
+    {
+        use crate::downloads::{self, State};
+        let id = item.id;
+        let mut state = use_signal(move || downloads::state(id));
+        use_future(move || async move {
+            loop {
+                futures_timer::Delay::new(std::time::Duration::from_secs(1)).await;
+                let now = downloads::state(id);
+                if *state.peek() != now {
+                    state.set(now);
+                }
+            }
+        });
+        let start = {
+            let item = item.clone();
+            move |_| {
+                downloads::start(client(), item.clone());
+                state.set(downloads::state(id));
+            }
+        };
+        match state() {
+            State::NotDownloaded => {
+                rsx! { button { class: "secondary big", onclick: start, "Download" } }
+            }
+            State::Running { fraction } => rsx! {
+                button { class: "secondary big", disabled: true, "Downloading {(fraction * 100.0).round()}%" }
+            },
+            State::Paused { fraction } => rsx! {
+                button { class: "secondary big", onclick: start, "Resume download ({(fraction * 100.0).round()}%)" }
+            },
+            State::Failed(e) => rsx! {
+                button { class: "secondary big", onclick: start, "Download failed, try again" }
+                p { class: "notice", "{e}" }
+            },
+            State::Done => rsx! {
+                button {
+                    class: "secondary big",
+                    onclick: move |_| {
+                        downloads::remove(id);
+                        state.set(State::NotDownloaded);
+                    },
+                    "Downloaded \u{2713}  Remove"
+                }
+            },
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[component]
+fn DownloadButton(item: Item) -> Element {
+    let _ = item;
+    rsx! {}
 }

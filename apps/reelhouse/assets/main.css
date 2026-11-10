@@ -415,3 +415,16 @@ html.tv {
 }
 .tv .device-code { font-size: 2.75rem; }
 .tv .qr svg { width: 160px; height: 160px; }
+
+/* Player controls fade once playback runs undisturbed; Back hides them at once. */
+.player-top, .player-controls { transition: opacity 450ms ease; }
+.player.idle { cursor: none; }
+.player.idle .player-top, .player.idle .player-controls { opacity: 0; pointer-events: none; }
+.player.idle.instant .player-top, .player.idle.instant .player-controls { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .player-top, .player-controls { transition: none; }
+}
+
+.downloads { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 1.5rem; }
+.downloads li { display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+.downloads .wide { width: 100%; }
