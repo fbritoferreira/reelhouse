@@ -360,6 +360,7 @@ pub fn vod_item(t: &VodTitle) -> reelhouse_api::Item {
         progress: None,
         show_id: None,
         show_title: t.show_title.clone(),
+        height: None,
     }
 }
 
