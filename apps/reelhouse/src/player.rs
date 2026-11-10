@@ -3,6 +3,65 @@
 use dioxus::prelude::*;
 use reelhouse_api::Capabilities;
 
+/// An audio or subtitle track the player can switch to.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct Track {
+    /// "audio" or "text".
+    pub kind: String,
+    pub group: i32,
+    pub index: i32,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub language: String,
+    #[serde(default)]
+    pub channels: i32,
+    #[serde(default)]
+    pub selected: bool,
+}
+
+impl Track {
+    /// "English 5.1", "Português", "Commentary".
+    pub fn name(&self) -> String {
+        let lang = language_name(&self.language);
+        let mut name = match (self.label.is_empty(), lang) {
+            (false, _) => self.label.clone(),
+            (true, Some(l)) => l.to_string(),
+            (true, None) if !self.language.is_empty() => self.language.to_uppercase(),
+            _ => format!("Track {}", self.index + 1),
+        };
+        if self.kind == "audio" {
+            match self.channels {
+                6 => name.push_str(" 5.1"),
+                8 => name.push_str(" 7.1"),
+                _ => {}
+            }
+        }
+        name
+    }
+}
+
+fn language_name(code: &str) -> Option<&'static str> {
+    Some(
+        match code.split(['-', '_']).next()?.to_ascii_lowercase().as_str() {
+            "en" | "eng" => "English",
+            "pt" | "por" => "Português",
+            "es" | "spa" => "Español",
+            "fr" | "fre" | "fra" => "Français",
+            "de" | "ger" | "deu" => "Deutsch",
+            "it" | "ita" => "Italiano",
+            "nl" | "dut" | "nld" => "Nederlands",
+            "ar" | "ara" => "العربية",
+            "ru" | "rus" => "Русский",
+            "pl" | "pol" => "Polski",
+            "tr" | "tur" => "Türkçe",
+            "ja" | "jpn" => "日本語",
+            "und" | "" => return None,
+            _ => return None,
+        },
+    )
+}
+
 fn list(xs: &[&str]) -> Vec<String> {
     xs.iter().map(|s| (*s).to_string()).collect()
 }
@@ -79,6 +138,14 @@ mod imp {
             self.video().is_some_and(|v| !v.paused())
         }
 
+        /// Track choice comes with the native players; the browser plays the stream's first tracks.
+        pub fn tracks(&self) -> Vec<super::Track> {
+            Vec::new()
+        }
+
+        pub fn select_track(&self, _t: &super::Track) {}
+        pub fn subtitles_off(&self) {}
+
         pub fn error(&self) -> Option<String> {
             let e = self.video()?.error()?;
             Some(format!(
@@ -118,6 +185,11 @@ mod imp {
         pub fn error(&self) -> Option<String> {
             Some("playback is not available on this platform yet".into())
         }
+        pub fn tracks(&self) -> Vec<super::Track> {
+            Vec::new()
+        }
+        pub fn select_track(&self, _t: &super::Track) {}
+        pub fn subtitles_off(&self) {}
     }
 }
 
@@ -169,5 +241,31 @@ pub fn capabilities() -> Capabilities {
         video_codecs: list(&["h264", "hevc", "vp9", "av1"]),
         audio_codecs: list(&["aac", "ac3", "eac3", "mp3", "opus", "flac"]),
         max_height: 2160,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Track;
+
+    fn track(kind: &str, label: &str, language: &str, channels: i32) -> Track {
+        Track {
+            kind: kind.into(),
+            group: 0,
+            index: 0,
+            label: label.into(),
+            language: language.into(),
+            channels,
+            selected: false,
+        }
+    }
+
+    #[test]
+    fn tracks_read_as_language_and_layout() {
+        assert_eq!(track("audio", "", "eng", 6).name(), "English 5.1");
+        assert_eq!(track("audio", "Commentary", "en", 2).name(), "Commentary");
+        assert_eq!(track("text", "", "pt-BR", 0).name(), "Português");
+        assert_eq!(track("text", "", "xx", 0).name(), "XX");
+        assert_eq!(track("text", "", "", 0).name(), "Track 1");
     }
 }

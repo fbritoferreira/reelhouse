@@ -801,3 +801,17 @@ button.secondary.current { background: var(--surface-raised); }
 @media (prefers-reduced-motion: reduce) {
   .peek { transition: none; transform: none; }
 }
+/* Audio and subtitle choices, raised above the controls. */
+.player-tracks { position: absolute; right: var(--gutter); background: rgba(53, 37, 58, 0.72); }
+.player-tracks.current { background: var(--text); color: var(--curtain-deep); }
+.track-picker {
+  align-self: flex-end; display: grid; grid-template-columns: repeat(2, minmax(10rem, 14rem)); gap: 1.5rem;
+  padding: 1rem 1.25rem; border-radius: calc(var(--radius) + 4px); background: rgba(21, 13, 23, 0.92);
+}
+.track-picker h3 { margin: 0 0 0.5rem; font-size: var(--t-small); color: var(--muted); font-weight: 600; }
+.track-picker section { display: flex; flex-direction: column; gap: 0.2rem; max-height: 14rem; overflow-y: auto; }
+.track { justify-content: flex-start; background: transparent; font-weight: 500; padding: 0.45em 0.8em; border-radius: 8px; }
+.track.current { color: var(--bulb); }
+.track.current::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--bulb); }
+.tv .track-picker { grid-template-columns: repeat(2, minmax(8rem, 11rem)); gap: 1rem; padding: 0.75rem 1rem; }
+.tv .track { font-size: 0.8125rem; }

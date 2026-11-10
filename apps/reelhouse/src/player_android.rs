@@ -128,6 +128,43 @@ impl Player {
             .unwrap_or(0.0)
     }
 
+    /// Audio and subtitle tracks in the playing title.
+    pub fn tracks(&self) -> Vec<super::Track> {
+        self.call("tracks", "()Ljava/lang/String;", &[], |env, v| {
+            let obj = v.l().ok()?;
+            let json: String = env.get_string(&JString::from(obj)).ok()?.into();
+            serde_json::from_str(&json).ok()
+        })
+        .unwrap_or_default()
+    }
+
+    pub fn select_track(&self, t: &super::Track) {
+        self.select(&t.kind, t.group, t.index);
+    }
+
+    pub fn subtitles_off(&self) {
+        self.select("text", -1, -1);
+    }
+
+    fn select(&self, kind: &str, group: i32, index: i32) {
+        let Ok(bridge) = &self.bridge else { return };
+        with_activity(|env, _| {
+            let kind = JObject::from(env.new_string(kind).ok()?);
+            env.call_method(
+                bridge,
+                "selectTrack",
+                "(Ljava/lang/String;II)V",
+                &[
+                    JValue::Object(&kind),
+                    JValue::Int(group),
+                    JValue::Int(index),
+                ],
+            )
+            .ok()
+            .map(|_| ())
+        });
+    }
+
     pub fn is_playing(&self) -> bool {
         self.call("isPlaying", "()Z", &[], |_, v| v.z().ok())
             .unwrap_or(false)
