@@ -193,6 +193,7 @@ struct ChannelRow {
     name: String,
     logo_url: Option<String>,
     group_title: Option<String>,
+    refused: Option<String>,
 }
 
 impl From<ChannelRow> for Channel {
@@ -204,6 +205,7 @@ impl From<ChannelRow> for Channel {
             name: r.name,
             logo_url: r.logo_url,
             group_title: r.group_title,
+            refused: r.refused,
         }
     }
 }
@@ -217,7 +219,7 @@ const VISIBLE: &str = "NOT EXISTS (SELECT 1 FROM hidden_groups h WHERE h.source_
 
 async fn all_channels(state: &AppState, group: Option<&str>) -> ApiResult<Vec<Channel>> {
     let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
-        "SELECT id, source_id, number, name, logo_url, group_title FROM channels \
+        "SELECT id, source_id, number, name, logo_url, group_title, refused FROM channels \
          WHERE {IN_GROUP} AND {VISIBLE} ORDER BY number IS NULL, number, name"
     ))
     .bind(group)
@@ -241,7 +243,7 @@ pub async fn channels(
         return Ok(Json(all_channels(&state, None).await?));
     };
     let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
-        "SELECT id, source_id, number, name, logo_url, group_title FROM channels \
+        "SELECT id, source_id, number, name, logo_url, group_title, refused FROM channels \
          WHERE name LIKE '%' || ? || '%' AND {VISIBLE} ORDER BY number IS NULL, number, name LIMIT 50"
     ))
     .bind(q.trim())
@@ -392,12 +394,24 @@ pub async fn play(
     {
         // ffmpeg names few HTTP refusals ("4XX Client Error"); ask the provider once more, now
         // that nothing else holds a connection, and say what it answered.
-        let why = provider_status(&url).await.and_then(refusal).map_or_else(
+        let refused = provider_status(&url).await.and_then(refusal);
+        if let Some(reason) = refused {
+            sqlx::query("UPDATE channels SET refused = ? WHERE id = ?")
+                .bind(reason)
+                .bind(id)
+                .execute(&state.db)
+                .await?;
+        }
+        let why = refused.map_or_else(
             || format!("the channel did not start: {why}"),
             str::to_string,
         );
         return Err(ApiError::BadGateway(why));
     }
+    sqlx::query("UPDATE channels SET refused = NULL WHERE id = ? AND refused IS NOT NULL")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
     Ok(Json(PlaybackPlan {
         method,
         url: format!("/api/v1/hls/{session}/index.m3u8"),
