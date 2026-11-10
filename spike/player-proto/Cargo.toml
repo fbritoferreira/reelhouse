@@ -17,8 +17,13 @@ js-sys = "0.3"
 [target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
 manganis = "=0.7.10"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libmpv2 = { version = "5.0.1", optional = true }
+objc2 = { version = "0.6", optional = true }
+objc2-foundation = { version = "0.3", optional = true, features = ["NSGeometry"] }
+
 [features]
 default = []
 web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
+desktop = ["dioxus/desktop", "dep:libmpv2", "dep:objc2", "dep:objc2-foundation"]
 mobile = ["dioxus/mobile"]

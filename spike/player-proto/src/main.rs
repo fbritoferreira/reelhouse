@@ -36,6 +36,23 @@ fn start_pip(p: &Player) {
 fn start_pip(_: &Player) {}
 
 fn main() {
+    #[cfg(feature = "desktop")]
+    {
+        use dioxus::desktop::{Config, WindowBuilder};
+        // Transparent window and webview so the mpv view behind the webview shows through.
+        dioxus::LaunchBuilder::desktop()
+            .with_cfg(
+                Config::new()
+                    .with_window(
+                        WindowBuilder::new()
+                            .with_title("Reelhouse player prototype")
+                            .with_transparent(true),
+                    )
+                    .with_background_color((0, 0, 0, 0)),
+            )
+            .launch(App);
+    }
+    #[cfg(not(feature = "desktop"))]
     dioxus::launch(App);
 }
 

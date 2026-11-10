@@ -27,3 +27,8 @@ pub use ios::Player;
 mod android;
 #[cfg(target_os = "android")]
 pub use android::Player;
+
+#[cfg(all(feature = "desktop", target_os = "macos"))]
+mod desktop;
+#[cfg(all(feature = "desktop", target_os = "macos"))]
+pub use desktop::Player;
