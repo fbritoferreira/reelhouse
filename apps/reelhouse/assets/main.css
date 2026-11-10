@@ -600,6 +600,9 @@ html.tv {
 .on-air .channel-monogram { font-size: 1.6rem; }
 .channel-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .channel-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Refused by the provider the last time it was tried: still there to retry, but quieter. */
+.channel.refused { opacity: 0.5; }
+.channel.refused:focus-visible, .channel.refused:hover { opacity: 0.8; }
 .channel-now { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .channel-meter { display: flex; align-items: center; gap: 0.6rem; font-size: var(--t-small); }
 .channel-meter .progress-track { position: static; flex: 0 0 7rem; }

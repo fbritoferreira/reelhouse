@@ -594,4 +594,11 @@ async fn a_channel_the_provider_refuses_says_why() {
         body.contains("your provider won't play this channel on your account"),
         "{body}"
     );
+    // Remembered, so the list can show it before anyone tries again.
+    let (_, chans) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    assert_eq!(
+        chans[0]["refused"],
+        "your provider won't play this channel on your account"
+    );
+    assert!(chans[1]["refused"].is_null());
 }

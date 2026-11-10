@@ -690,14 +690,22 @@ fn ChannelRow(
     rsx! {
         li { onfocusin: move |_| on_focus.call(()), onmouseenter: move |_| on_focus.call(()),
             Link {
-                class: if lit { "channel lit" } else { "channel" },
+                class: match (lit, c.refused.is_some()) {
+                    (true, true) => "channel lit refused",
+                    (true, false) => "channel lit",
+                    (false, true) => "channel refused",
+                    (false, false) => "channel",
+                },
+                title: c.refused.clone(),
                 to: Route::Watch { id: c.id, group: group.into() },
                 onclick: move |_| LIVE.write().place.returning = true,
                 span { class: "channel-number", "{number}" }
                 Logo { name: c.name.clone(), url: c.logo_url.clone() }
                 span { class: "channel-text",
                     span { class: "channel-name", "{c.name}" }
-                    if let Some(p) = current {
+                    if c.refused.is_some() {
+                        span { class: "channel-now quiet", "Unavailable from your provider" }
+                    } else if let Some(p) = current {
                         span { class: "channel-now", "{p.title}" }
                         span { class: "channel-meter",
                             span { class: "progress-track",
@@ -719,6 +727,17 @@ fn ChannelRow(
             }
         }
     }
+}
+
+/// The channel `step` away from `from`, passing over ones the provider refused; wraps around.
+/// When every other channel is refused, the one right next to `from`.
+fn next_playable(refused: &[bool], from: usize, step: isize) -> usize {
+    let n = refused.len() as isize;
+    let at = |k: isize| (from as isize + step * k).rem_euclid(n) as usize;
+    (1..n)
+        .map(at)
+        .find(|&i| !refused[i])
+        .unwrap_or_else(|| at(1))
 }
 
 fn fraction(p: &Programme, now: i64) -> f64 {
@@ -802,9 +821,11 @@ fn Tuned(id: i64, group: String) -> Element {
             if n == 0 {
                 return;
             }
-            let to = channels[(i as isize + step).rem_euclid(n) as usize]
-                .channel
-                .id;
+            let refused: Vec<bool> = channels
+                .iter()
+                .map(|c| c.channel.refused.is_some())
+                .collect();
+            let to = channels[next_playable(&refused, i, step)].channel.id;
             p.pause();
             nav.replace(Route::Watch {
                 id: to,
@@ -896,6 +917,17 @@ fn Tuned(id: i64, group: String) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zapping_passes_over_refused_channels() {
+        let refused = [false, true, true, false, false];
+        assert_eq!(next_playable(&refused, 0, 1), 3);
+        assert_eq!(next_playable(&refused, 3, -1), 0);
+        // Wraps round the ends.
+        assert_eq!(next_playable(&refused, 4, 1), 0);
+        // Nothing else plays: the neighbour, so Up and Down still move.
+        assert_eq!(next_playable(&[false, true, true], 0, 1), 1);
+    }
 
     fn prog(id: i64, start: i64, stop: i64) -> Programme {
         Programme {

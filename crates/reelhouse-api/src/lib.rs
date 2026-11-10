@@ -234,6 +234,9 @@ pub struct Channel {
     pub name: String,
     pub logo_url: Option<String>,
     pub group_title: Option<String>,
+    /// Why the provider refused this channel the last time it was played; `None` once it plays.
+    #[serde(default)]
+    pub refused: Option<String>,
 }
 
 /// Times are Unix seconds.
