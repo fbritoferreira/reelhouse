@@ -169,7 +169,7 @@ pub fn GuideGrid(group: String, time: Signal<Clock>) -> Element {
                         }
                         div { class: "guide-actions",
                             if on_now {
-                                Link { class: "primary", to: Route::Watch { id: c.channel.id, group: group.clone() },
+                                Link { class: "primary", to: Route::Watch { id: c.channel.id, group: group.clone().into() },
                                     span { class: "play-icon", "aria-hidden": "true" }
                                     "Watch"
                                 }
@@ -226,7 +226,7 @@ pub fn GuideGrid(group: String, time: Signal<Clock>) -> Element {
                     },
                     Link {
                         class: "guide-channel",
-                        to: Route::Watch { id: c.channel.id, group: group.clone() },
+                        to: Route::Watch { id: c.channel.id, group: group.clone().into() },
                         span { class: "channel-number", "{c.channel.number.map(|n| n.to_string()).unwrap_or_default()}" }
                         span { class: "guide-channel-name", "{c.channel.name}" }
                     }
@@ -265,7 +265,7 @@ pub fn GuideGrid(group: String, time: Signal<Clock>) -> Element {
                                             onclick: move |_| {
                                                 if on_now {
                                                     LIVE.write().place.returning = true;
-                                                    nav.push(Route::Watch { id: channel_id, group: g.clone() });
+                                                    nav.push(Route::Watch { id: channel_id, group: g.clone().into() });
                                                 }
                                             },
                                             if recorded {

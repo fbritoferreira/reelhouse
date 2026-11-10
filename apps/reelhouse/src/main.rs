@@ -57,7 +57,47 @@ pub enum Route {
     #[route("/vod/play/:id")]
     PlayVod { id: i64 },
     #[route("/watch/:id?:group")]
-    Watch { id: i64, group: String },
+    Watch { id: i64, group: Group },
+}
+
+/// A Live TV group in the address bar. Provider group names carry `&`, `#` and `+` ("Sky Sports &
+/// News", "RTL+"), which the router would read as the end of the value; they are escaped here.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Group(pub String);
+
+impl From<String> for Group {
+    fn from(s: String) -> Self {
+        Group(s)
+    }
+}
+
+impl std::fmt::Display for Group {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for c in self.0.chars() {
+            match c {
+                // Twice: the router decodes the whole query once before splitting it at `&`.
+                '%' => f.write_str("%2525")?,
+                '&' => f.write_str("%2526")?,
+                '#' => f.write_str("%2523")?,
+                '+' => f.write_str("%252B")?,
+                c => write!(f, "{c}")?,
+            }
+        }
+        Ok(())
+    }
+}
+
+impl std::str::FromStr for Group {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Group(
+            s.replace("%26", "&")
+                .replace("%23", "#")
+                .replace("%2B", "+")
+                .replace("%25", "%"),
+        ))
+    }
 }
 
 fn main() {
@@ -218,6 +258,33 @@ fn Shell() -> Element {
             for r in [route.to_string()] {
                 CurrentPage { key: "{r}" }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Route;
+    use std::str::FromStr;
+
+    #[test]
+    fn a_group_name_survives_the_address_bar() {
+        for group in [
+            "Germany - RTL+",
+            "Sky Sports & News",
+            "UK #1",
+            "100% Hits",
+            "News",
+        ] {
+            let route = Route::Watch {
+                id: 41,
+                group: super::Group(group.into()),
+            };
+            let url = route.to_string();
+            let back = Route::from_str(&url)
+                .map_err(|e| e.to_string())
+                .expect("parses");
+            assert!(back == route, "{group:?} came back as {back} from {url}");
         }
     }
 }
