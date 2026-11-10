@@ -62,7 +62,10 @@ fn App() -> Element {
             document::Script { src: "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js" }
             video { id: "v", playsinline: true }
         }
-        div { class: "sources",
+        div {
+            // Logs every key Dioxus receives, for the D-pad check (Android logcat tag RustStdoutStderr).
+            onkeydown: move |e: KeyboardEvent| eprintln!("proto: key {:?} code {:?}", e.key(), e.code()),
+            class: "sources",
             for (label, url) in sources {
                 button {
                     tabindex: 0,
@@ -89,6 +92,9 @@ fn App() -> Element {
                 }
             }
         }
-        Controls {}
+        div {
+            onkeydown: move |e: KeyboardEvent| eprintln!("proto: key {:?} code {:?}", e.key(), e.code()),
+            Controls {}
+        }
     }
 }
