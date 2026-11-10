@@ -68,6 +68,8 @@ impl Sessions {
         ])
         .args(["-hls_segment_type", "fmp4"])
         .arg(dir.path().join("index.m3u8"))
+        // Kept beside the segments so a failed start can say why.
+        .stderr(std::fs::File::create(dir.path().join("ffmpeg.log"))?)
         .kill_on_drop(true);
         let child = cmd.spawn()?;
         let id = crate::auth::new_token();
@@ -80,6 +82,40 @@ impl Sessions {
             },
         );
         Ok(id)
+    }
+
+    /// Waits until the session's playlist exists. If ffmpeg gives up first (a dead channel, a
+    /// provider refusing the connection) the session is dropped and its last error returned.
+    pub async fn ready(&self, id: &str, timeout: Duration) -> Result<(), String> {
+        let started = Instant::now();
+        loop {
+            let failed = {
+                let mut map = self.inner.lock().unwrap();
+                let Some(s) = map.get_mut(id) else {
+                    return Err("the stream stopped".into());
+                };
+                if s.dir.path().join("index.m3u8").exists() {
+                    return Ok(());
+                }
+                match s.child.try_wait() {
+                    Ok(Some(_)) => {
+                        let log = std::fs::read_to_string(s.dir.path().join("ffmpeg.log"))
+                            .unwrap_or_default();
+                        map.remove(id);
+                        Some(last_error(&log))
+                    }
+                    _ => None,
+                }
+            };
+            if let Some(reason) = failed {
+                return Err(reason);
+            }
+            if started.elapsed() > timeout {
+                self.inner.lock().unwrap().remove(id);
+                return Err(format!("nothing arrived in {} seconds", timeout.as_secs()));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
     }
 
     /// Path of `name` inside the session directory, if the session exists.
@@ -125,8 +161,38 @@ impl Sessions {
     }
 }
 
+/// The last meaningful line of ffmpeg's log, without the `[https @ 0x…]` prefix.
+fn last_error(log: &str) -> String {
+    log.lines()
+        .rev()
+        .map(|l| match l.find("] ") {
+            Some(i) if l.starts_with('[') => &l[i + 2..],
+            _ => l,
+        })
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("Error opening input file"))
+        .unwrap_or("the stream would not open")
+        .to_string()
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         let _ = self.child.start_kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::last_error;
+
+    #[test]
+    fn last_error_skips_noise() {
+        let log = "[https @ 0x5d3a] HTTP error 407 Proxy Authentication Required\n\
+                   Error opening input file https://x/y.\n";
+        assert_eq!(
+            last_error(log),
+            "HTTP error 407 Proxy Authentication Required"
+        );
+        assert_eq!(last_error(""), "the stream would not open");
     }
 }

@@ -57,6 +57,8 @@ fn group_label(name: &Option<String>) -> String {
 pub fn LiveTv() -> Element {
     let groups = use_resource(|| async move { client().channel_groups().await });
     let mut chosen = use_signal(|| None::<String>);
+    // Counts focus moves, so a pending group switch can tell it has been overtaken.
+    let mut focused = use_signal(|| 0u64);
     let time = use_clock();
     let list = match &*groups.read() {
         None => {
@@ -96,6 +98,22 @@ pub fn LiveTv() -> Element {
                                 let k = key(&g.name);
                                 move |_| chosen.set(Some(k.clone()))
                             },
+                            // Resting on a group shows its channels, as on a TV guide; passing
+                            // over it on the way elsewhere does not load anything.
+                            onfocus: {
+                                let k = key(&g.name);
+                                move |_| {
+                                    focused += 1;
+                                    let mine = focused();
+                                    let k = k.clone();
+                                    spawn(async move {
+                                        futures_timer::Delay::new(Duration::from_millis(300)).await;
+                                        if focused() == mine {
+                                            chosen.set(Some(k));
+                                        }
+                                    });
+                                }
+                            },
                             span { class: "live-group-name", "{group_label(&g.name)}" }
                             span { class: "live-group-count", "{g.channels}" }
                         }
@@ -109,11 +127,11 @@ pub fn LiveTv() -> Element {
 
 #[component]
 fn GroupGuide(group: String, time: Signal<Clock>) -> Element {
-    let g = group.clone();
-    let guide = use_resource(move || {
-        let g = g.clone();
-        async move { client().guide(&g).await }
-    });
+    // Reactive on `group`: a key on a lone child does not remount it, so the resource must
+    // re-run itself when another group is chosen.
+    let guide = use_resource(use_reactive!(|group| async move {
+        client().guide(&group).await
+    }));
     match &*guide.read() {
         None => rsx! { p { class: "quiet live-channels", "Loading the guide" } },
         Some(Err(e)) => rsx! { div { class: "live-channels", LoadError { error: describe(e) } } },

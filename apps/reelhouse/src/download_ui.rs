@@ -167,7 +167,7 @@ mod native {
     pub fn CollectionDownload(scope: Item) -> Element {
         let scope_id = scope.id;
         let is_show = scope.kind == reelhouse_api::ItemKind::Show;
-        let episodes = use_resource(move || async move {
+        let episodes = use_resource(use_reactive!(|scope_id, is_show| async move {
             let c = client();
             let load = async {
                 if !is_show {
@@ -181,7 +181,7 @@ mod native {
                 Ok::<_, reelhouse_core::ClientError>((eps, seasons.len()))
             };
             load.await.map_err(|e| e.to_string())
-        });
+        }));
         let mut tick = use_signal(|| 0u32);
         use_future(move || async move {
             loop {

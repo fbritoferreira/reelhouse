@@ -119,7 +119,9 @@ fn ShowView(show: Item, season: Option<i64>) -> Element {
 
 #[component]
 fn Episodes(season: i64, fallback_art: Option<String>) -> Element {
-    let eps = use_resource(move || async move { client().children(season).await });
+    let eps = use_resource(use_reactive!(|season| async move {
+        client().children(season).await
+    }));
     match &*eps.read() {
         None => rsx! { p { class: "quiet", "Loading episodes" } },
         Some(Err(e)) => rsx! { LoadError { error: describe(e) } },

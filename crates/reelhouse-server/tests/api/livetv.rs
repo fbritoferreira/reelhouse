@@ -305,3 +305,26 @@ async fn play_channel_starts_hls() {
     let (status, _) = call(&app, "GET", url, Some(&admin), None).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn dead_channel_fails_fast() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "/does/not/exist.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, chans) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    let (status, body) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/channels/{}/play", chans[0]["id"]),
+        Some(&admin),
+        None,
+    )
+    .await;
+    // The plain-text reason (ffmpeg's last error) is covered by hls::tests::last_error_skips_noise.
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+}
