@@ -1,8 +1,11 @@
 //! The Reelhouse app for web, Android and Google TV.
 
+#[cfg(not(target_arch = "wasm32"))]
+mod art;
 mod pages;
 mod player;
 mod session;
+mod tv;
 mod widgets;
 
 use dioxus::prelude::*;
@@ -40,6 +43,9 @@ fn main() {
 #[component]
 fn App() -> Element {
     session::provide();
+    #[cfg(feature = "mobile")]
+    art::use_art_handler();
+    tv::use_tv_layout();
     rsx! {
         document::Link { rel: "preconnect", href: "https://fonts.googleapis.com" }
         document::Link {
@@ -56,10 +62,21 @@ fn App() -> Element {
 fn Shell() -> Element {
     let mut session = session::use_session();
     let nav = navigator();
-    if session.read().client.token().is_none() {
-        nav.replace(Route::Login {});
-        return rsx! {};
-    }
+    let route = use_route::<Route>();
+    // Back walks back through screens; on Home it leaves the app.
+    // Read the route at press time (hooks cannot run inside callbacks).
+    let back_router = router();
+    tv::use_back(move || {
+        if matches!(back_router.current::<Route>(), Route::Home {}) {
+            tv::exit_app();
+        } else {
+            back_router.go_back();
+        }
+    });
+    use_effect(use_reactive!(|route| {
+        let _ = &route;
+        tv::focus_main_action();
+    }));
     // After a reload only the token survives; fetch who it belongs to, or sign out if it expired.
     use_future(move || async move {
         if session.peek().user.is_none() {
@@ -74,7 +91,12 @@ fn Shell() -> Element {
         }
     });
     let user = session.read().user.clone();
-    let route = use_route::<Route>();
+    let libraries = use_resource(|| async move { session::client().libraries().await });
+    // Hooks above run on every render; only then leave for sign-in.
+    if session.read().client.token().is_none() {
+        nav.replace(Route::Login {});
+        return rsx! {};
+    }
     let here = |r: Route| {
         if route == r {
             "nav-link current"
@@ -87,9 +109,17 @@ fn Shell() -> Element {
             Link { class: "brand", to: Route::Home {}, "Reelhouse" }
             nav { class: "bar-links", "aria-label": "Main",
                 Link { class: here(Route::Home {}), to: Route::Home {}, "Home" }
-                Link { class: here(Route::LinkDevice { code: String::new() }), to: Route::LinkDevice { code: String::new() }, "Link a device" }
-                if user.as_ref().is_some_and(|u| u.is_admin) {
-                    Link { class: here(Route::Admin {}), to: Route::Admin {}, "Manage" }
+                if let Some(Ok(libs)) = &*libraries.read() {
+                    for lib in libs.clone() {
+                        Link { key: "{lib.id}", class: here(Route::LibraryPage { id: lib.id }), to: Route::LibraryPage { id: lib.id }, "{lib.name}" }
+                    }
+                }
+                // Linking devices and managing the server are browser tasks; the TV app keeps to watching.
+                if cfg!(target_arch = "wasm32") {
+                    Link { class: here(Route::LinkDevice { code: String::new() }), to: Route::LinkDevice { code: String::new() }, "Link a device" }
+                    if user.as_ref().is_some_and(|u| u.is_admin) {
+                        Link { class: here(Route::Admin {}), to: Route::Admin {}, "Manage" }
+                    }
                 }
             }
             if let Some(u) = user.clone() {
