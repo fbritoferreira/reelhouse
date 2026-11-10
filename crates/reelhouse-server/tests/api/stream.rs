@@ -84,7 +84,7 @@ async fn setup(idle: Duration) -> (axum::Router, String, i64, tempfile::TempDir)
     (app, token, items[0]["id"].as_i64().unwrap(), dir)
 }
 
-async fn get(
+pub async fn get(
     app: &axum::Router,
     uri: &str,
     range: Option<&str>,

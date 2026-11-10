@@ -239,7 +239,7 @@ fn Films(group: String) -> Element {
             for (i, f) in list[..limit].iter().cloned().enumerate() {
                 VodPoster {
                     key: "{f.id}",
-                    to: Route::PlayVod { id: f.id },
+                    to: Route::VodFilm { id: f.id },
                     title: f.title.clone(),
                     caption: f.year.map(|y| y.to_string()).unwrap_or_default(),
                     poster: f.poster_url.clone(),
@@ -335,6 +335,94 @@ fn PosterSkeleton() -> Element {
     }
 }
 
+/// An on-demand title as a download and offline item. Its id is negated so it never meets a
+/// library item's on the device.
+pub fn vod_item(t: &VodTitle) -> reelhouse_api::Item {
+    reelhouse_api::Item {
+        id: -t.id,
+        kind: if t.show_title.is_some() {
+            reelhouse_api::ItemKind::Episode
+        } else {
+            reelhouse_api::ItemKind::Movie
+        },
+        parent_id: None,
+        title: match (&t.show_title, t.season_no, t.episode_no) {
+            (Some(_), Some(s), Some(e)) => format!("S{s:02}E{e:02} · {}", t.title),
+            _ => t.title.clone(),
+        },
+        year: None,
+        season_no: t.season_no,
+        episode_no: t.episode_no,
+        duration_s: t.duration_s,
+        overview: None,
+        poster_url: t.poster_url.clone(),
+        backdrop_url: None,
+        progress: None,
+        show_id: None,
+        show_title: t.show_title.clone(),
+        height: None,
+    }
+}
+
+fn episode_title(e: &VodEpisode, show: &str) -> VodTitle {
+    VodTitle {
+        id: e.id,
+        title: e.title.clone(),
+        show_title: Some(show.to_string()),
+        season_no: e.season_no,
+        episode_no: e.episode_no,
+        poster_url: e.poster_url.clone(),
+        duration_s: e.duration_s,
+        progress: e.progress.clone(),
+    }
+}
+
+/// A provider film: poster, Play or Resume, and Download on devices that keep titles.
+#[component]
+pub fn VodFilm(id: i64) -> Element {
+    let title = use_resource(use_reactive!(
+        |id| async move { client().vod_title(id).await }
+    ));
+    let t = match &*title.read() {
+        Some(Ok(t)) => t.clone(),
+        Some(Err(e)) => {
+            return rsx! { div { class: "page page-top", LoadError { error: describe(e) } } };
+        }
+        None => return rsx! { div { class: "page page-top", PosterSkeleton {} } },
+    };
+    let resume = t
+        .progress
+        .as_ref()
+        .filter(|p| !p.played && p.position_s > 0.0)
+        .is_some();
+    let length = t
+        .duration_s
+        .filter(|d| *d > 0.0)
+        .map(crate::widgets::runtime);
+    rsx! {
+        div { class: "page page-top vod-show",
+            header { class: "vod-show-head",
+                if let Some(url) = t.poster_url.clone() {
+                    img { class: "vod-show-poster", src: url, alt: "" }
+                }
+                div { class: "vod-film-text",
+                    h1 { "{t.title}" }
+                    if let Some(l) = length {
+                        p { class: "quiet", "{l}" }
+                    }
+                    div { class: "hero-actions",
+                        Link { class: "primary big", autofocus: true, to: Route::PlayVod { id: t.id },
+                            span { class: "play-icon", "aria-hidden": "true" }
+                            if resume { "Resume" } else { "Play" }
+                        }
+                        crate::download_ui::DownloadButton { item: vod_item(&t) }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A series' episodes, season by season.
 #[component]
 pub fn VodShow(title: String) -> Element {
@@ -369,7 +457,7 @@ pub fn VodShow(title: String) -> Element {
                     h2 { match s { Some(n) => format!("Season {n}"), None => "Episodes".to_string() } }
                     ol { class: "vod-episodes",
                         for e in list.iter().filter(|e| e.season_no == s).cloned() {
-                            li { key: "{e.id}",
+                            li { key: "{e.id}", class: "episode-item",
                                 Link { class: "vod-episode", to: Route::PlayVod { id: e.id },
                                     span { class: "episode-number", "{e.episode_no.map(|n| n.to_string()).unwrap_or_default()}" }
                                     span { class: "episode-name", "{e.title}" }
@@ -382,6 +470,7 @@ pub fn VodShow(title: String) -> Element {
                                     }
                                     span { class: "play-icon", "aria-hidden": "true" }
                                 }
+                                crate::download_ui::EpisodeDownload { ep: vod_item(&episode_title(&e, &title)) }
                             }
                         }
                     }

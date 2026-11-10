@@ -21,4 +21,4 @@ pub use live::{LiveTv, Watch};
 pub use login::{Login, Setup};
 pub use play::{Play, PlayVod};
 pub use search::Search;
-pub use vod::VodShow;
+pub use vod::{VodFilm, VodShow};

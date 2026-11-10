@@ -15,7 +15,7 @@ mod widgets;
 use dioxus::prelude::*;
 use pages::{
     Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, LiveTv, Login, Play, PlayVod,
-    Search, Setup, VodShow, Watch,
+    Search, Setup, VodFilm, VodShow, Watch,
 };
 
 const STYLE: Asset = asset!("/assets/main.css");
@@ -42,6 +42,8 @@ pub enum Route {
         Search {},
         #[route("/vod/show?:title")]
         VodShow { title: String },
+        #[route("/vod/film/:id")]
+        VodFilm { id: i64 },
     #[end_layout]
     #[route("/login")]
     Login {},

@@ -49,9 +49,12 @@ pub fn Downloads() -> Element {
                     ul { class: "downloads",
                         for (d, state) in entries {
                             li { key: "{d.item.id}",
-                                Link { class: "wide", to: Route::Play { id: d.item.id },
+                                Link {
+                                    class: "wide",
+                                    to: if d.item.id < 0 { Route::PlayVod { id: -d.item.id } } else { Route::Play { id: d.item.id } },
                                     div { class: "wide-art",
-                                        img { src: "/art/{d.item.id}/backdrop", alt: "" }
+                                        // On-demand titles bring a poster only.
+                                        img { src: if d.item.id < 0 { format!("/art/{}/poster", d.item.id) } else { format!("/art/{}/backdrop", d.item.id) }, alt: "" }
                                     }
                                     span { class: "poster-title",
                                         if d.item.show_title.is_some() { "{episode_name(&d.item)}" } else { "{d.item.title}" }

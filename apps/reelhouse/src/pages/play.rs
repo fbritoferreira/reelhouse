@@ -91,7 +91,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
         let p = p.clone();
         async move {
             let c = client();
-            let local = if on_demand { None } else { downloaded(id) };
+            // On-demand titles are kept on the device under their negated id.
+            let local = downloaded(if on_demand { -id } else { id });
             // The server knows the latest position; a downloaded copy plays without it. On-demand
             // titles keep no position yet.
             let (mut known, resume_at) = if on_demand {
