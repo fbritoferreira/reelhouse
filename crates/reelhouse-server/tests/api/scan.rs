@@ -1,10 +1,8 @@
-mod common;
-
 use std::path::Path;
 use std::process::Command;
 
+use super::common::{admin_token, app, call};
 use axum::http::StatusCode;
-use common::{admin_token, app, call};
 use serde_json::json;
 
 fn have_ffmpeg() -> bool {
@@ -235,7 +233,7 @@ async fn scan_fills_tmdb_metadata() {
     let mut config = reelhouse_server::config::Config::for_tests(std::env::temp_dir());
     config.tmdb_api_key = Some("k".into());
     config.tmdb_base = format!("{}/", server.uri()).parse().unwrap();
-    let app = common::app_with(config).await;
+    let app = super::common::app_with(config).await;
     let token = admin_token(&app).await;
     let lib = library(&app, &token, "movies", dir.path()).await;
     call(

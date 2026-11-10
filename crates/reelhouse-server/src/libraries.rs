@@ -94,7 +94,7 @@ pub async fn scan(
 }
 
 #[derive(FromRow)]
-struct ItemRow {
+pub struct ItemRow {
     id: i64,
     kind: String,
     parent_id: Option<i64>,

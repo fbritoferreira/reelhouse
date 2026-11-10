@@ -1,7 +1,5 @@
-mod common;
-
+use super::common::{admin_token, app, call};
 use axum::http::StatusCode;
-use common::{admin_token, app, call};
 use serde_json::json;
 
 #[tokio::test]

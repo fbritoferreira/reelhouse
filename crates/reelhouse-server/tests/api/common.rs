@@ -8,8 +8,12 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 pub async fn app_with(config: Config) -> Router {
+    app_and_db(config).await.0
+}
+
+pub async fn app_and_db(config: Config) -> (Router, sqlx::SqlitePool) {
     let db = reelhouse_server::db::open_memory().await.unwrap();
-    router(AppState::new(db, config))
+    (router(AppState::new(db.clone(), config)), db)
 }
 
 pub async fn app() -> Router {

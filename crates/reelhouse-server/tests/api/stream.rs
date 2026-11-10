@@ -1,12 +1,10 @@
-mod common;
-
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+use super::common::{admin_token, call};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use common::{admin_token, call};
 use http_body_util::BodyExt;
 use reelhouse_server::config::Config;
 use serde_json::json;
@@ -56,7 +54,7 @@ async fn setup(idle: Duration) -> (axum::Router, String, i64, tempfile::TempDir)
     make_video(&dir.path().join("Clip (2020).mkv"), 12);
     let mut config = Config::for_tests(std::env::temp_dir());
     config.hls_idle = idle;
-    let app = common::app_with(config).await;
+    let app = super::common::app_with(config).await;
     let token = admin_token(&app).await;
     let (_, lib) = call(
         &app,
@@ -191,7 +189,7 @@ async fn idle_hls_session_is_reaped() {
 
 #[tokio::test]
 async fn file_requires_token() {
-    let app = common::app().await;
+    let app = super::common::app().await;
     let (status, _, _) = get(&app, "/api/v1/items/1/file", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }

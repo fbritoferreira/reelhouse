@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use sqlx::SqlitePool;
 
 use crate::config::Config;
 use crate::stream::hls::Sessions;
 use crate::stream::routes as stream;
-use crate::{libraries, users};
+use crate::{libraries, progress, users};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -51,5 +51,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/items/{id}/playback", post(stream::playback))
         .route("/api/v1/items/{id}/file", get(stream::file))
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
+        .route("/api/v1/items/{id}/progress", put(progress::put))
+        .route("/api/v1/continue", get(progress::continue_watching))
         .with_state(state)
 }

@@ -7,6 +7,7 @@ pub mod db;
 pub mod error;
 pub mod libraries;
 pub mod metadata;
+pub mod progress;
 pub mod scan;
 pub mod stream;
 pub mod users;
