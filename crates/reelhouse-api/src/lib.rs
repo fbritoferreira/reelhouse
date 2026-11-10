@@ -117,3 +117,56 @@ pub struct PlaybackPlan {
     pub method: PlaybackMethod,
     pub url: String,
 }
+
+/// Rewrites Plex file paths before matching, for when the two servers mount media differently.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct PathRewrite {
+    pub from: String,
+    pub to: String,
+}
+
+/// Imports the Plex token owner's watch state into `user_id`.
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub struct PlexImportRequest {
+    pub url: String,
+    pub token: String,
+    pub user_id: i64,
+    #[serde(default)]
+    pub path_rewrites: Vec<PathRewrite>,
+}
+
+/// Hand-written so the Plex token never reaches a log.
+impl std::fmt::Debug for PlexImportRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlexImportRequest")
+            .field("url", &self.url)
+            .field("token", &"<redacted>")
+            .field("user_id", &self.user_id)
+            .field("path_rewrites", &self.path_rewrites)
+            .finish()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ImportReport {
+    pub matched: u64,
+    pub unmatched: Vec<String>,
+    pub progress_written: u64,
+    pub notes: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plex_request_debug_hides_token() {
+        let req = PlexImportRequest {
+            url: "http://plex:32400".into(),
+            token: "s3cret".into(),
+            user_id: 1,
+            path_rewrites: vec![],
+        };
+        assert!(!format!("{req:?}").contains("s3cret"));
+    }
+}
