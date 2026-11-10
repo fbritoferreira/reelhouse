@@ -192,7 +192,7 @@ mod tests {
             ..rule(RuleKind::Once)
         };
         assert_eq!(
-            plan(&[r], &[p.clone()], &[], NOW).create,
+            plan(&[r], std::slice::from_ref(&p), &[], NOW).create,
             vec![NewRecording {
                 rule_id: 1,
                 channel_id: 10,
@@ -305,7 +305,7 @@ mod tests {
         let rerun = prog(2, NOW + 100, "Show", Some("Pilot"));
         let got = plan(
             &[r],
-            &[rerun.clone()],
+            std::slice::from_ref(&rerun),
             &[existing(1, &first, RecordingStatus::Failed)],
             NOW,
         );
