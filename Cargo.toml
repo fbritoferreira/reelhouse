@@ -15,3 +15,8 @@ serde_json = "1"
 reelhouse-api = { path = "crates/reelhouse-api" }
 reelhouse-core = { path = "crates/reelhouse-core" }
 reelhouse-ui = { path = "crates/reelhouse-ui" }
+
+# Dioxus 0.7.10's manganis refuses to compile for 32-bit Android, which the Google TV Streamer
+# runs. The patched copy only removes that guard (patches/manganis/src/android/callback.rs).
+[patch.crates-io]
+manganis = { path = "patches/manganis" }

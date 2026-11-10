@@ -3282,8 +3282,6 @@ dependencies = [
 [[package]]
 name = "manganis"
 version = "0.7.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ed2af894a724a0b6e521f9efe84f98cfdc74a4de6828efef77ffd3b1679fd52"
 dependencies = [
  "const-serialize 0.7.2",
  "const-serialize 0.8.0-alpha.0",
