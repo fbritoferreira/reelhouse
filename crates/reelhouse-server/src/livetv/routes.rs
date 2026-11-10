@@ -228,11 +228,28 @@ async fn all_channels(state: &AppState, group: Option<&str>) -> ApiResult<Vec<Ch
     Ok(rows.into_iter().map(Channel::from).collect())
 }
 
+#[derive(Deserialize)]
+pub struct ChannelQuery {
+    /// Channels whose name contains this, at most 50.
+    q: Option<String>,
+}
+
 pub async fn channels(
     State(state): State<AppState>,
     _user: CurrentUser,
+    Query(query): Query<ChannelQuery>,
 ) -> ApiResult<Json<Vec<Channel>>> {
-    Ok(Json(all_channels(&state, None).await?))
+    let Some(q) = query.q.filter(|q| !q.trim().is_empty()) else {
+        return Ok(Json(all_channels(&state, None).await?));
+    };
+    let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
+        "SELECT id, source_id, number, name, logo_url, group_title FROM channels \
+         WHERE name LIKE '%' || ? || '%' AND {VISIBLE} ORDER BY number IS NULL, number, name LIMIT 50"
+    ))
+    .bind(q.trim())
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(rows.into_iter().map(Channel::from).collect()))
 }
 
 /// Channel groups in playlist order (by their first channel), the ungrouped last.

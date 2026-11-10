@@ -5,6 +5,7 @@ mod art;
 mod download_ui;
 #[cfg(not(target_arch = "wasm32"))]
 mod downloads;
+mod live_cache;
 mod pages;
 mod player;
 mod session;
@@ -13,7 +14,8 @@ mod widgets;
 
 use dioxus::prelude::*;
 use pages::{
-    Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, LiveTv, Login, Play, Setup, Watch,
+    Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, LiveTv, Login, Play, Search, Setup,
+    Watch,
 };
 
 const STYLE: Asset = asset!("/assets/main.css");
@@ -36,6 +38,8 @@ pub enum Route {
         Downloads {},
         #[route("/live")]
         LiveTv {},
+        #[route("/search")]
+        Search {},
     #[end_layout]
     #[route("/login")]
     Login {},
@@ -65,6 +69,54 @@ fn App() -> Element {
         }
         document::Stylesheet { href: STYLE }
         Router::<Route> {}
+    }
+}
+
+/// The round profile button and its menu: who is signed in, and the browser-only tasks.
+#[component]
+fn Profile(name: String, is_admin: bool) -> Element {
+    let mut open = use_signal(|| false);
+    let nav = navigator();
+    let initial = name
+        .chars()
+        .next()
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
+    rsx! {
+        div { class: "profile",
+            button {
+                class: if open() { "bar-round avatar-button current" } else { "bar-round avatar-button" },
+                "aria-haspopup": "menu",
+                "aria-expanded": open(),
+                "aria-label": "{name}",
+                title: "{name}",
+                onclick: move |_| open.toggle(),
+                "{initial}"
+            }
+            if open() {
+                // Clicking anywhere else closes the menu.
+                div { class: "menu-scrim", onclick: move |_| open.set(false) }
+                div { class: "profile-menu", role: "menu",
+                    p { class: "profile-name", "{name}" }
+                    // Linking devices and managing the server are browser tasks; the TV app keeps to watching.
+                    if cfg!(target_arch = "wasm32") {
+                        Link { role: "menuitem", to: Route::LinkDevice { code: String::new() }, onclick: move |_| open.set(false), "Link a device" }
+                        if is_admin {
+                            Link { role: "menuitem", to: Route::Admin {}, onclick: move |_| open.set(false), "Manage" }
+                        }
+                    }
+                    button {
+                        role: "menuitem",
+                        onclick: move |_| {
+                            session::sign_out();
+                            nav.replace(Route::Login {});
+                        },
+                        "Switch user"
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -124,16 +176,22 @@ fn Shell() -> Element {
         return rsx! {};
     }
     let here = |r: Route| {
-        if route == r {
-            "nav-link current"
-        } else {
-            "nav-link"
-        }
+        if route == r { "pill current" } else { "pill" }
     };
     rsx! {
         header { class: "bar",
             Link { class: "brand", to: Route::Home {}, "Reelhouse" }
-            nav { class: "bar-links", "aria-label": "Main",
+            Link {
+                class: if route == (Route::Search {}) { "bar-round current" } else { "bar-round" },
+                to: Route::Search {},
+                "aria-label": "Search",
+                title: "Search",
+                svg { view_box: "0 0 24 24", "aria-hidden": "true",
+                    circle { cx: "10.5", cy: "10.5", r: "6.5" }
+                    path { d: "M15.5 15.5 20 20" }
+                }
+            }
+            nav { class: "bar-pills", "aria-label": "Main",
                 Link { class: here(Route::Home {}), to: Route::Home {}, "Home" }
                 if let Some(Ok(libs)) = &*libraries.read() {
                     for lib in libs.clone() {
@@ -144,25 +202,9 @@ fn Shell() -> Element {
                 if cfg!(not(target_arch = "wasm32")) {
                     Link { class: here(Route::Downloads {}), to: Route::Downloads {}, "Downloads" }
                 }
-                // Linking devices and managing the server are browser tasks; the TV app keeps to watching.
-                if cfg!(target_arch = "wasm32") {
-                    Link { class: here(Route::LinkDevice { code: String::new() }), to: Route::LinkDevice { code: String::new() }, "Link a device" }
-                    if user.as_ref().is_some_and(|u| u.is_admin) {
-                        Link { class: here(Route::Admin {}), to: Route::Admin {}, "Manage" }
-                    }
-                }
             }
             if let Some(u) = user.clone() {
-                button {
-                    class: "user-chip",
-                    title: "Switch user",
-                    onclick: move |_| {
-                        session::sign_out();
-                        nav.replace(Route::Login {});
-                    },
-                    span { class: "avatar", "{u.name.chars().next().unwrap_or('?').to_uppercase()}" }
-                    span { class: "user-chip-text", "Switch user" }
-                }
+                Profile { name: u.name.clone(), is_admin: u.is_admin }
             }
         }
         main {

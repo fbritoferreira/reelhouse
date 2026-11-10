@@ -7,6 +7,7 @@ mod link;
 mod live;
 mod login;
 mod play;
+mod search;
 
 pub use admin::Admin;
 pub use downloads::Downloads;
@@ -17,3 +18,4 @@ pub use link::LinkDevice;
 pub use live::{LiveTv, Watch};
 pub use login::{Login, Setup};
 pub use play::Play;
+pub use search::Search;

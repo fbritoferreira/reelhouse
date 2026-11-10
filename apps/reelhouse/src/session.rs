@@ -118,6 +118,7 @@ pub fn sign_in(token: String, user: User) {
 
 pub fn sign_out() {
     save(TOKEN_KEY, None);
+    crate::live_cache::clear();
     let mut s = use_session();
     s.set(Session {
         client: Client::new(server_base()),

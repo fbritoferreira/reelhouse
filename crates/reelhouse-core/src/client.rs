@@ -208,6 +208,15 @@ impl Client {
         .await
     }
 
+    /// Channels whose name contains `q`, at most 50.
+    pub async fn search_channels(&self, q: &str) -> Result<Vec<Channel>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/livetv/channels")
+                .query(&[("q", q)]),
+        )
+        .await
+    }
+
     pub async fn play_channel(&self, id: i64) -> Result<PlaybackPlan, ClientError> {
         self.post(&format!("/api/v1/livetv/channels/{id}/play"), &())
             .await

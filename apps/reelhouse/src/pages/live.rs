@@ -9,6 +9,7 @@ use reelhouse_api::{ChannelGroup, GuideChannel, Programme};
 use reelhouse_core::timefmt::{clock, left};
 
 use crate::Route;
+use crate::live_cache::{LIVE, Place, store_groups, store_guide};
 use crate::player::Player;
 use crate::session::client;
 use crate::widgets::{LoadError, describe};
@@ -65,9 +66,9 @@ impl GroupSort {
 
     fn label(self) -> &'static str {
         match self {
-            GroupSort::Provider => "Provider order",
+            GroupSort::Provider => "Provider",
             GroupSort::Name => "A to Z",
-            GroupSort::Size => "Most channels",
+            GroupSort::Size => "Biggest",
         }
     }
 
@@ -103,26 +104,84 @@ fn sort_groups(mut groups: Vec<ChannelGroup>, by: GroupSort) -> Vec<ChannelGroup
     groups
 }
 
+/// Groups that share a prefix (`Germany - RTL+`, `IT | Crime`) shown together under it.
+/// `name` is `None` for a group standing alone.
+#[derive(Clone, PartialEq)]
+struct Family {
+    name: Option<String>,
+    /// Each group with the label shown inside its family.
+    groups: Vec<(ChannelGroup, String)>,
+}
+
+/// Splits `Germany - RTL+` into `("Germany", "RTL+")`.
+fn split_prefix(name: &str) -> Option<(&str, &str)> {
+    [" - ", " | ", ": "].iter().find_map(|sep| {
+        let (head, tail) = name.split_once(sep)?;
+        (!head.trim().is_empty() && !tail.trim().is_empty()).then(|| (head.trim(), tail.trim()))
+    })
+}
+
+/// Gathers groups into families in order of first appearance, so any sort carries over.
+fn families(groups: &[ChannelGroup]) -> Vec<Family> {
+    fn prefix_of(g: &ChannelGroup) -> Option<&str> {
+        g.name.as_deref().and_then(split_prefix).map(|(p, _)| p)
+    }
+    let mut out: Vec<Family> = Vec::new();
+    for g in groups {
+        let shared =
+            prefix_of(g).filter(|p| groups.iter().filter(|o| prefix_of(o) == Some(*p)).count() > 1);
+        match shared {
+            Some(p) => {
+                let short = split_prefix(g.name.as_deref().unwrap_or_default())
+                    .map_or("", |(_, s)| s)
+                    .to_string();
+                match out.iter_mut().find(|f| f.name.as_deref() == Some(p)) {
+                    Some(f) => f.groups.push((g.clone(), short)),
+                    None => out.push(Family {
+                        name: Some(p.to_string()),
+                        groups: vec![(g.clone(), short)],
+                    }),
+                }
+            }
+            None => out.push(Family {
+                name: None,
+                groups: vec![(g.clone(), group_label(&g.name))],
+            }),
+        }
+    }
+    out
+}
+
 fn group_label(name: &Option<String>) -> String {
     name.clone().unwrap_or_else(|| "Other channels".into())
 }
 
 #[component]
 pub fn LiveTv() -> Element {
-    let groups = use_resource(|| async move { client().channel_groups().await });
-    let mut chosen = use_signal(|| None::<String>);
+    // Groups come from the cache at once; a stale or missing list is fetched behind it.
+    let mut failed = use_signal(|| None::<String>);
+    use_future(move || async move {
+        if LIVE.peek().groups.as_ref().is_some_and(|g| g.fresh()) {
+            return;
+        }
+        match client().channel_groups().await {
+            Ok(g) => store_groups(g),
+            Err(e) => failed.set(Some(describe(&e))),
+        }
+    });
     let mut sort = use_signal(GroupSort::saved);
+    // Countries opened by hand; the one holding the current group is always open.
+    let mut opened = use_signal(std::collections::HashSet::<String>::new);
     // Counts focus moves, so a pending group switch can tell it has been overtaken.
     let mut focused = use_signal(|| 0u64);
     let time = use_clock();
-    let list = match &*groups.read() {
-        None => {
-            return rsx! { div { class: "page page-top", p { class: "quiet", "Loading channels" } } };
+    let cached = LIVE.read().groups.as_ref().map(|g| g.value.clone());
+    let list = match (cached, failed()) {
+        (Some(list), _) => sort_groups(list, sort()),
+        (None, Some(e)) => {
+            return rsx! { div { class: "page page-top", LoadError { error: e } } };
         }
-        Some(Err(e)) => {
-            return rsx! { div { class: "page page-top", LoadError { error: describe(e) } } };
-        }
-        Some(Ok(list)) => sort_groups(list.clone(), sort()),
+        (None, None) => return rsx! { LiveSkeleton {} },
     };
     if list.is_empty() {
         return rsx! {
@@ -134,62 +193,196 @@ pub fn LiveTv() -> Element {
     }
     // The ungrouped are asked for with an empty group name.
     let key = |name: &Option<String>| name.clone().unwrap_or_default();
-    let selected = chosen().unwrap_or_else(|| key(&list[0].name));
-    let total: i64 = list.iter().map(|g| g.channels).sum();
+    let remembered = LIVE.read().place.group.clone();
+    let selected = remembered
+        .filter(|g| list.iter().any(|l| key(&l.name) == *g))
+        .unwrap_or_else(|| key(&list[0].name));
+    // Choosing a group starts it from the top.
+    let choose = |k: String| {
+        let mut live = LIVE.write();
+        if live.place.group.as_deref() != Some(k.as_str()) {
+            live.place = Place {
+                group: Some(k),
+                spotlight: 0,
+                shown: PAGE,
+                returning: false,
+            };
+        }
+    };
+    let current = list.iter().find(|g| key(&g.name) == selected).cloned();
+    let fams = families(&list);
+    let pick = move |k: String| {
+        move |_| {
+            focused += 1;
+            let mine = focused();
+            let k = k.clone();
+            // Resting on a group shows its channels, as on a TV guide; passing over it on the
+            // way elsewhere loads nothing.
+            spawn(async move {
+                futures_timer::Delay::new(Duration::from_millis(300)).await;
+                if focused() == mine {
+                    choose(k);
+                }
+            });
+        }
+    };
     rsx! {
         div { class: "page page-top live",
-            header { class: "page-head live-head",
-                h1 { "Live TV" }
-                p { class: "quiet", "{total} channels" }
-                div { class: "live-sort", role: "radiogroup", "aria-label": "Sort groups",
-                    for by in GroupSort::ALL {
-                        button {
-                            key: "{by.id()}",
-                            role: "radio",
-                            class: if sort() == by { "live-sort-option current" } else { "live-sort-option" },
-                            "aria-checked": sort() == by,
-                            onclick: move |_| {
-                                sort.set(by);
-                                crate::session::save(SORT_KEY, Some(by.id()));
-                            },
-                            "{by.label()}"
+            div { class: "live-body",
+                aside { class: "live-groups",
+                    h1 { class: "live-title", "Live TV" }
+                    div { class: "live-sort", role: "radiogroup", "aria-label": "Sort groups",
+                        for by in GroupSort::ALL {
+                            button {
+                                key: "{by.id()}",
+                                role: "radio",
+                                class: if sort() == by { "live-sort-option current" } else { "live-sort-option" },
+                                "aria-checked": sort() == by,
+                                onclick: move |_| {
+                                    sort.set(by);
+                                    crate::session::save(SORT_KEY, Some(by.id()));
+                                },
+                                "{by.label()}"
+                            }
                         }
                     }
+                    nav { class: "live-group-list", "aria-label": "Channel groups",
+                        for fam in fams {
+                            match fam.name.clone() {
+                                None => {
+                                    let (g, label) = fam.groups[0].clone();
+                                    let k = key(&g.name);
+                                    rsx! {
+                                        GroupButton {
+                                            key: "{k}",
+                                            label,
+                                            channels: g.channels,
+                                            current: k == selected,
+                                            on_pick: pick(k.clone()),
+                                            on_choose: move |_| choose(k.clone()),
+                                        }
+                                    }
+                                }
+                                Some(country) => {
+                                    let holds_current = fam.groups.iter().any(|(g, _)| key(&g.name) == selected);
+                                    let open = holds_current || opened().contains(&country);
+                                    let total: i64 = fam.groups.iter().map(|(g, _)| g.channels).sum();
+                                    let c2 = country.clone();
+                                    rsx! {
+                                        div { key: "{country}", class: if open { "live-family open" } else { "live-family" },
+                                            button {
+                                                class: "live-family-head",
+                                                "aria-expanded": open,
+                                                onclick: move |_| {
+                                                    let mut o = opened();
+                                                    if !o.remove(&c2) {
+                                                        o.insert(c2.clone());
+                                                    }
+                                                    opened.set(o);
+                                                },
+                                                span { class: "live-family-chevron", "aria-hidden": "true" }
+                                                span { class: "live-group-name", "{country}" }
+                                                span { class: "live-group-count", "{total}" }
+                                            }
+                                            if open {
+                                                for (g, label) in fam.groups.clone() {
+                                                    {
+                                                        let k = key(&g.name);
+                                                        rsx! {
+                                                            GroupButton {
+                                                                key: "{k}",
+                                                                label,
+                                                                channels: g.channels,
+                                                                current: k == selected,
+                                                                nested: true,
+                                                                on_pick: pick(k.clone()),
+                                                                on_choose: move |_| choose(k.clone()),
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                section { class: "live-main",
+                    if let Some(g) = current {
+                        {
+                            // The country is in the sidebar; the heading names the group itself.
+                            let label = group_label(&g.name);
+                            let (country, short) = match split_prefix(&label) {
+                                Some((c, s)) => (Some(c.to_string()), s.to_string()),
+                                None => (None, label.clone()),
+                            };
+                            let count = if g.channels == 1 { "1 channel".to_string() } else { format!("{} channels", g.channels) };
+                            let detail = match country {
+                                Some(c) => format!("{c}, {count}"),
+                                None => count,
+                            };
+                            rsx! {
+                                header { class: "live-main-head",
+                                    h2 { "{short}" }
+                                    span { class: "quiet", "{detail}" }
+                                }
+                            }
+                        }
+                    }
+                    GroupGuide { key: "{selected}", group: selected.clone(), time }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn GroupButton(
+    label: String,
+    channels: i64,
+    current: bool,
+    #[props(default)] nested: bool,
+    on_pick: EventHandler<FocusEvent>,
+    on_choose: EventHandler<MouseEvent>,
+) -> Element {
+    let class = match (current, nested) {
+        (true, true) => "live-group nested current",
+        (true, false) => "live-group current",
+        (false, true) => "live-group nested",
+        (false, false) => "live-group",
+    };
+    rsx! {
+        button {
+            class,
+            "aria-current": current,
+            onclick: move |e| on_choose.call(e),
+            onfocus: move |e| on_pick.call(e),
+            span { class: "live-group-name", "{label}" }
+            span { class: "live-group-count", "{channels}" }
+        }
+    }
+}
+
+/// The page's shape while the groups load, so nothing jumps when they arrive.
+#[component]
+fn LiveSkeleton() -> Element {
+    rsx! {
+        div { class: "page page-top live", "aria-busy": "true",
             div { class: "live-body",
-                nav { class: "live-groups", "aria-label": "Channel groups",
-                    for g in list {
-                        button {
-                            key: "{key(&g.name)}",
-                            class: if key(&g.name) == selected { "live-group current" } else { "live-group" },
-                            "aria-current": key(&g.name) == selected,
-                            onclick: {
-                                let k = key(&g.name);
-                                move |_| chosen.set(Some(k.clone()))
-                            },
-                            // Resting on a group shows its channels, as on a TV guide; passing
-                            // over it on the way elsewhere does not load anything.
-                            onfocus: {
-                                let k = key(&g.name);
-                                move |_| {
-                                    focused += 1;
-                                    let mine = focused();
-                                    let k = k.clone();
-                                    spawn(async move {
-                                        futures_timer::Delay::new(Duration::from_millis(300)).await;
-                                        if focused() == mine {
-                                            chosen.set(Some(k));
-                                        }
-                                    });
-                                }
-                            },
-                            span { class: "live-group-name", "{group_label(&g.name)}" }
-                            span { class: "live-group-count", "{g.channels}" }
-                        }
+                aside { class: "live-groups",
+                    h1 { class: "live-title", "Live TV" }
+                    for i in 0..9 {
+                        span { key: "{i}", class: "skeleton skeleton-line" }
                     }
                 }
-                GroupGuide { key: "{selected}", group: selected.clone(), time }
+                section { class: "live-main",
+                    span { class: "skeleton skeleton-panel" }
+                    for i in 0..6 {
+                        span { key: "{i}", class: "skeleton skeleton-row" }
+                    }
+                }
             }
         }
     }
@@ -197,45 +390,87 @@ pub fn LiveTv() -> Element {
 
 #[component]
 fn GroupGuide(group: String, time: Signal<Clock>) -> Element {
-    // Reactive on `group`: a key on a lone child does not remount it, so the resource must
-    // re-run itself when another group is chosen.
-    let guide = use_resource(use_reactive!(|group| async move {
-        client().guide(&group).await
-    }));
-    // Rows are drawn a page at a time: reaching the last few draws the next page, so a group of
-    // a thousand channels costs no more to open than one of forty.
-    let mut shown = use_signal(|| PAGE);
+    let mut failed = use_signal(|| None::<String>);
+    // Cached guides show at once; a stale or missing one is fetched behind it.
     use_effect(use_reactive!(|group| {
-        let _ = &group;
-        shown.set(PAGE);
+        failed.set(None);
+        if LIVE.peek().guides.get(&group).is_some_and(|g| g.fresh()) {
+            return;
+        }
+        spawn(async move {
+            match client().guide(&group).await {
+                Ok(g) => store_guide(&group, g),
+                Err(e) => failed.set(Some(describe(&e))),
+            }
+        });
     }));
-    match &*guide.read() {
-        None => rsx! { p { class: "quiet live-channels", "Loading the guide" } },
-        Some(Err(e)) => rsx! { div { class: "live-channels", LoadError { error: describe(e) } } },
-        Some(Ok(channels)) => {
-            let total = channels.len();
-            let limit = shown().min(total);
-            rsx! {
-                ol { class: "live-channels",
-                    for (i, c) in channels[..limit].iter().cloned().enumerate() {
-                        ChannelRow {
-                            key: "{c.channel.id}",
-                            entry: c,
-                            group: group.clone(),
-                            time: time(),
-                            on_focus: move |_| {
-                                if i + 5 >= shown() {
-                                    shown += PAGE;
-                                }
-                            },
-                        }
+    let guide = LIVE.read().guides.get(&group).map(|g| g.value.clone());
+    let place = LIVE.read().place.clone();
+    let shown = place.shown.max(PAGE);
+    let spotlight = place.spotlight;
+    // Back from a channel: focus its row again, where it was.
+    let returning = place.returning && guide.is_some();
+    use_effect(move || {
+        if returning {
+            LIVE.write().place.returning = false;
+            spawn(async move {
+                futures_timer::Delay::new(Duration::from_millis(60)).await;
+                let _ = document::eval(
+                    "const r = document.querySelector('.channel.lit'); \
+                     if (r) { r.focus({ preventScroll: true }); r.scrollIntoView({ block: 'nearest' }); }",
+                );
+            });
+        }
+    });
+    let channels = match (guide, failed()) {
+        (Some(c), _) => c,
+        (None, Some(e)) => return rsx! { div { class: "live-channels", LoadError { error: e } } },
+        (None, None) => {
+            return rsx! {
+                div { class: "live-loading", "aria-busy": "true",
+                    span { class: "skeleton skeleton-panel" }
+                    for i in 0..6 {
+                        span { key: "{i}", class: "skeleton skeleton-row" }
                     }
-                    if limit < total {
-                        li {
-                            button { class: "secondary live-more", onclick: move |_| shown += PAGE,
-                                "Show {(total - limit).min(PAGE)} more of {total - limit}"
-                            }
+                }
+            };
+        }
+    };
+    let total = channels.len();
+    let limit = shown.min(total);
+    let lit = channels
+        .get(spotlight.min(total.saturating_sub(1)))
+        .cloned();
+    rsx! {
+        if let Some(entry) = lit {
+            OnAir { entry, time: time() }
+        }
+        ol { class: "live-channels",
+            for (i, c) in channels[..limit].iter().cloned().enumerate() {
+                ChannelRow {
+                    key: "{c.channel.id}",
+                    entry: c,
+                    group: group.clone(),
+                    time: time(),
+                    lit: i == spotlight,
+                    on_focus: move |_| {
+                        let mut live = LIVE.write();
+                        live.place.spotlight = i;
+                        if i + 5 >= live.place.shown.max(PAGE) {
+                            live.place.shown = live.place.shown.max(PAGE) + PAGE;
                         }
+                    },
+                }
+            }
+            if limit < total {
+                li {
+                    button {
+                        class: "secondary live-more",
+                        onclick: move |_| {
+                            let mut live = LIVE.write();
+                            live.place.shown = live.place.shown.max(PAGE) + PAGE;
+                        },
+                        "Show {(total - limit).min(PAGE)} more of {total - limit}"
                     }
                 }
             }
@@ -246,20 +481,95 @@ fn GroupGuide(group: String, time: Signal<Clock>) -> Element {
 /// Channel rows drawn at a time.
 const PAGE: usize = 40;
 
+/// Two letters for a channel without a logo: `UK: BBC One` gives `BO`.
+fn monogram(name: &str) -> String {
+    let name = name.split_once(": ").map_or(name, |(_, rest)| rest);
+    name.split_whitespace()
+        .filter_map(|w| w.chars().find(|c| c.is_alphanumeric()))
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
+}
+
 #[component]
-fn ChannelRow(entry: GuideChannel, group: String, time: Clock, on_focus: EventHandler) -> Element {
+fn Logo(name: String, url: Option<String>) -> Element {
+    rsx! {
+        span { class: "channel-logo",
+            if let Some(url) = url {
+                img { src: url, alt: "", loading: "lazy", decoding: "async" }
+            } else {
+                span { class: "channel-monogram", "{monogram(&name)}" }
+            }
+        }
+    }
+}
+
+/// The channel in focus, large: what is on now and next. The marquee lamp marks it as live.
+#[component]
+fn OnAir(entry: GuideChannel, time: Clock) -> Element {
+    let c = &entry.channel;
+    let (current, next) = now_next(&entry.programmes, time.now);
+    rsx! {
+        div { class: "on-air",
+            Logo { name: c.name.clone(), url: c.logo_url.clone() }
+            div { class: "on-air-text",
+                p { class: "on-air-channel",
+                    if let Some(n) = c.number {
+                        span { class: "channel-number", "{n}" }
+                    }
+                    span { "{c.name}" }
+                }
+                match current {
+                    Some(p) => rsx! {
+                        p { class: "on-air-now",
+                            span { class: "lamp", "aria-label": "On now" }
+                            "{p.title}"
+                        }
+                        div { class: "channel-meter",
+                            span { class: "progress-track",
+                                span { class: "progress-fill", style: "width: {fraction(p, time.now) * 100.0}%" }
+                            }
+                            span { class: "quiet", "{left(time.now, p.stop)}" }
+                        }
+                        if let Some(d) = p.description.clone() {
+                            p { class: "on-air-desc", "{d}" }
+                        }
+                    },
+                    None => rsx! {
+                        p { class: "on-air-now",
+                            span { class: "lamp", "aria-label": "Live" }
+                            "Live now"
+                        }
+                        p { class: "quiet on-air-desc", "This provider sends no guide for this channel." }
+                    },
+                }
+                if let Some(n) = next.filter(|_| time.now > 0) {
+                    p { class: "quiet", "Next at {clock(n.start, time.offset_min)}: {n.title}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ChannelRow(
+    entry: GuideChannel,
+    group: String,
+    time: Clock,
+    lit: bool,
+    on_focus: EventHandler,
+) -> Element {
     let c = &entry.channel;
     let (current, next) = now_next(&entry.programmes, time.now);
     let number = c.number.map(|n| n.to_string()).unwrap_or_default();
     rsx! {
-        li { onfocusin: move |_| on_focus.call(()),
-            Link { class: "channel", to: Route::Watch { id: c.id, group },
+        li { onfocusin: move |_| on_focus.call(()), onmouseenter: move |_| on_focus.call(()),
+            Link {
+                class: if lit { "channel lit" } else { "channel" },
+                to: Route::Watch { id: c.id, group },
+                onclick: move |_| LIVE.write().place.returning = true,
                 span { class: "channel-number", "{number}" }
-                span { class: "channel-logo",
-                    if let Some(url) = c.logo_url.clone() {
-                        img { src: url, alt: "", loading: "lazy" }
-                    }
-                }
+                Logo { name: c.name.clone(), url: c.logo_url.clone() }
                 span { class: "channel-text",
                     span { class: "channel-name", "{c.name}" }
                     if let Some(p) = current {
@@ -307,10 +617,22 @@ fn Tuned(id: i64, group: String) -> Element {
     let mut shown = use_signal(|| 0u32);
     let time = use_clock();
     let nav = navigator();
+    // The group's guide, from the cache when the list was open a moment ago.
     let g = group.clone();
     let guide = use_resource(move || {
         let g = g.clone();
-        async move { client().guide(&g).await.unwrap_or_default() }
+        async move {
+            if let Some(c) = LIVE.peek().guides.get(&g).filter(|c| c.fresh()) {
+                return c.value.clone();
+            }
+            match client().guide(&g).await {
+                Ok(list) => {
+                    store_guide(&g, list.clone());
+                    list
+                }
+                Err(_) => Vec::new(),
+            }
+        }
     });
 
     let p = player.clone();
@@ -476,6 +798,46 @@ mod tests {
         assert_eq!(names(GroupSort::Provider), ["UK", "", "africa"]);
         assert_eq!(names(GroupSort::Name), ["africa", "UK", ""]);
         assert_eq!(names(GroupSort::Size), ["africa", "UK", ""]);
+    }
+
+    #[test]
+    fn groups_gather_under_their_country() {
+        let groups = vec![
+            group(Some("Germany - RTL+"), 40),
+            group(Some("Sport"), 9),
+            group(Some("Germany - MotoGP"), 14),
+            group(Some("IT | Crime"), 3),
+            group(Some("IT | Anime"), 2),
+            group(Some("UK - Only one"), 5),
+            group(None, 1),
+        ];
+        let fams = families(&groups);
+        let shape: Vec<(Option<&str>, Vec<&str>)> = fams
+            .iter()
+            .map(|f| {
+                (
+                    f.name.as_deref(),
+                    f.groups.iter().map(|(_, short)| short.as_str()).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            vec![
+                (Some("Germany"), vec!["RTL+", "MotoGP"]),
+                (None, vec!["Sport"]),
+                (Some("IT"), vec!["Crime", "Anime"]),
+                // A prefix used once is not a family; the group keeps its full name.
+                (None, vec!["UK - Only one"]),
+                (None, vec!["Other channels"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn monograms_skip_the_country_prefix() {
+        assert_eq!(monogram("UK: BBC One"), "BO");
+        assert_eq!(monogram("Eurosport 1"), "E1");
     }
 
     #[test]

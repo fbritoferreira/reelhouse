@@ -348,6 +348,30 @@ async fn hidden_groups_leave_live_tv() {
 }
 
 #[tokio::test]
+async fn channels_can_be_searched_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, found) = call(
+        &app,
+        "GET",
+        "/api/v1/livetv/channels?q=mus",
+        Some(&admin),
+        None,
+    )
+    .await;
+    let names: Vec<&str> = found
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Music"]);
+}
+
+#[tokio::test]
 async fn refresh_keeps_channel_ids() {
     let dir = tempfile::tempdir().unwrap();
     let (m3u, epg) = write_source(dir.path(), "http://example.invalid/n.ts", &guide(&[]));
