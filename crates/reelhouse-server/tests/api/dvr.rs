@@ -151,9 +151,10 @@ async fn dvr_records_into_the_recordings_library_and_keeps_last() {
         dir.path(),
         &stream.to_string_lossy(),
         &guide(&[
-            // Pilot must still be airing once setup finishes, which takes seconds on slow CI runners.
-            (t - 10, t + 6, "Show", "Pilot"),
-            (t + 6, t + 8, "Show", "Second"),
+            // Pilot must still be airing once setup finishes, which takes seconds on slow CI
+            // runners and more when the whole suite runs at once.
+            (t - 10, t + 12, "Show", "Pilot"),
+            (t + 12, t + 14, "Show", "Second"),
         ]),
     );
     let data = dir.path().join("data");
@@ -178,7 +179,7 @@ async fn dvr_records_into_the_recordings_library_and_keeps_last() {
     .await;
     assert_eq!(status, StatusCode::CREATED);
 
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(45);
     let recs = loop {
         let recs = recordings(&app, &admin).await;
         if recs.len() == 2 && recs.iter().all(|r| r["status"] == "done") {
