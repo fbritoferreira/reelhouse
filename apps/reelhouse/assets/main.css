@@ -188,3 +188,7 @@ input, select {
 
 .credit { font-size: 0.875rem; }
 .credit a { text-decoration: underline; text-underline-offset: 3px; }
+/* Native players draw behind the page, so the page itself must be see-through while playing. */
+.video.native { background: transparent; }
+.player:has(.video.native) { background: transparent; }
+html:has(.video.native), html:has(.video.native) body { background: transparent; }

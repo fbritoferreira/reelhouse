@@ -9,10 +9,15 @@ use crate::widgets::describe;
 pub fn Login() -> Element {
     let mut name = use_signal(String::new);
     let mut password = use_signal(String::new);
+    let mut server = use_signal(|| if session::needs_server() { "http://".to_string() } else { String::new() });
     let mut error = use_signal(|| None::<String>);
+    let ask_server = session::needs_server();
     let nav = navigator();
     let submit = move |e: FormEvent| async move {
         e.prevent_default();
+        if ask_server {
+            session::set_server(&server());
+        }
         match client().login(&name(), &password()).await {
             Ok(res) => {
                 session::sign_in(res.token, res.user);
@@ -28,8 +33,13 @@ pub fn Login() -> Element {
         div { class: "auth",
             h1 { class: "brand big", "Reelhouse" }
             form { class: "auth-form", onsubmit: submit,
+                if ask_server {
+                    label { "Server address, e.g. http://192.168.1.10:8420"
+                        input { autofocus: true, r#type: "url", value: "{server}", oninput: move |e| server.set(e.value()) }
+                    }
+                }
                 label { "Name"
-                    input { autofocus: true, value: "{name}", oninput: move |e| name.set(e.value()) }
+                    input { autofocus: !ask_server, value: "{name}", oninput: move |e| name.set(e.value()) }
                 }
                 label { "Password"
                     input { r#type: "password", value: "{password}", oninput: move |e| password.set(e.value()) }

@@ -89,9 +89,13 @@ mod imp {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "android")]
+#[path = "player_android.rs"]
+mod imp;
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 mod imp {
-    /// Placeholder until the Google TV app adds the ExoPlayer backend (M4).
+    /// Desktop builds have no player yet.
     pub struct Player;
 
     impl Player {
@@ -112,14 +116,17 @@ mod imp {
             false
         }
         pub fn error(&self) -> Option<String> {
-            Some("playback on this platform arrives with the TV app".into())
+            Some("playback is not available on this platform yet".into())
         }
     }
 }
 
 pub use imp::Player;
+#[cfg(target_os = "android")]
+pub use imp::files_dir;
 
 /// What this client plays without the server's help.
+#[cfg(not(target_os = "android"))]
 pub fn capabilities() -> Capabilities {
     Capabilities {
         containers: list(&["mp4", "m4v", "webm", "mov"]),
@@ -138,8 +145,20 @@ pub fn surface() -> Element {
             video { id: imp::VIDEO_ID, class: "video", playsinline: true }
         }
     }
+    // Native: the video draws in a native view behind the transparent webview.
     #[cfg(not(target_arch = "wasm32"))]
     {
-        rsx! { div { class: "video" } }
+        rsx! { div { class: "video native" } }
+    }
+}
+
+/// ExoPlayer on Google TV hardware: MKV and HEVC play directly.
+#[cfg(target_os = "android")]
+pub fn capabilities() -> Capabilities {
+    Capabilities {
+        containers: list(&["mp4", "m4v", "mkv", "webm", "mov", "ts"]),
+        video_codecs: list(&["h264", "hevc", "vp9", "av1"]),
+        audio_codecs: list(&["aac", "ac3", "eac3", "mp3", "opus", "flac"]),
+        max_height: 2160,
     }
 }

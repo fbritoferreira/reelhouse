@@ -4741,6 +4741,7 @@ dependencies = [
  "dioxus",
  "futures-timer",
  "js-sys",
+ "manganis",
  "reelhouse-api",
  "reelhouse-core",
  "wasm-bindgen",
