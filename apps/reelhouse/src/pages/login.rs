@@ -44,10 +44,26 @@ pub fn Login() -> Element {
             Err(e) => error.set(Some(describe(&e))),
         }
     };
+    // TVs sign in by code; the password form stays as a fallback.
+    let code_base = if ask_server {
+        server()
+    } else {
+        client().base().to_string()
+    };
+    let show_code = cfg!(not(target_arch = "wasm32"))
+        && code_base.len() > "http://".len()
+        && code_base.starts_with("http");
     rsx! {
         div { class: "auth",
             h1 { class: "brand big", "Reelhouse" }
+            div { class: "signin",
+            if show_code {
+                CodeSignIn { key: "{code_base}", base: code_base.clone() }
+            }
             form { class: "auth-form", onsubmit: submit,
+                if show_code {
+                    h2 { "Or sign in with a password" }
+                }
                 if ask_server {
                     label { "Server address, e.g. http://192.168.1.10:8420"
                         input { r#type: "url", value: "{server}", oninput: move |e| server.set(e.value()) }
@@ -79,6 +95,7 @@ pub fn Login() -> Element {
                     p { class: "notice", "{msg}" }
                 }
                 button { class: "primary", r#type: "submit", "Sign in" }
+            }
             }
             p { class: "aside", "New server? " Link { to: Route::Setup {}, "Create the admin account" } }
         }
@@ -142,4 +159,88 @@ async fn discover(ask: bool) -> Vec<String> {
     }
     let _ = ask;
     Vec::new()
+}
+
+/// Shows a sign-in code and QR for `base`, and signs in once someone approves it from a browser.
+#[component]
+fn CodeSignIn(base: String) -> Element {
+    let nav = navigator();
+    let mut attempt = use_signal(|| 0u32);
+    let code = use_resource({
+        let base = base.clone();
+        move || {
+            let base = base.clone();
+            let _ = attempt();
+            async move { reelhouse_core::Client::new(base).device_start().await }
+        }
+    });
+    use_future({
+        let base = base.clone();
+        move || {
+            let base = base.clone();
+            async move {
+                loop {
+                    futures_timer::Delay::new(std::time::Duration::from_secs(3)).await;
+                    let Some(Ok(dc)) = code
+                        .peek()
+                        .as_ref()
+                        .map(|r| r.as_ref().map(|d| d.poll_token.clone()))
+                    else {
+                        continue;
+                    };
+                    match reelhouse_core::Client::new(base.clone())
+                        .device_poll(&dc)
+                        .await
+                    {
+                        Ok(Some(login)) => {
+                            session::set_server(&base);
+                            session::sign_in(login.token, login.user);
+                            nav.replace(Route::Home {});
+                            return;
+                        }
+                        Ok(None) => {}
+                        // Expired or used up: show a fresh code.
+                        Err(reelhouse_core::ClientError::Status(410, _)) => attempt += 1,
+                        Err(_) => {}
+                    }
+                }
+            }
+        }
+    });
+    let link = |c: &str| format!("{}/link?code={c}", base.trim_end_matches('/'));
+    match &*code.read() {
+        None => {
+            rsx! { section { class: "code-signin", p { class: "quiet", "Getting a sign-in code…" } } }
+        }
+        Some(Err(e)) => {
+            rsx! { section { class: "code-signin", p { class: "notice", "Couldn't reach {base}: {describe(e)}" } } }
+        }
+        Some(Ok(dc)) => rsx! {
+            section { class: "code-signin",
+                h2 { "Sign in with your phone" }
+                p { class: "quiet", "Scan the code, or open {base}/link on a signed-in device and enter:" }
+                p { class: "device-code", "{dc.code}" }
+                div { class: "qr", dangerous_inner_html: qr_svg(&link(&dc.code)) }
+            }
+        },
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn qr_svg(data: &str) -> String {
+    use qrcode::render::svg;
+    qrcode::QrCode::new(data.as_bytes())
+        .map(|q| {
+            q.render::<svg::Color>()
+                .min_dimensions(220, 220)
+                .dark_color(svg::Color("#1e1320"))
+                .light_color(svg::Color("#efe6dc"))
+                .build()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn qr_svg(_data: &str) -> String {
+    String::new()
 }

@@ -276,6 +276,25 @@ pub struct ImportReport {
     pub notes: Vec<String>,
 }
 
+/// A sign-in code for a device without a keyboard. `code` is shown to the user;
+/// `poll_token` stays on the device and is used to collect the session once approved.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DeviceCode {
+    pub code: String,
+    pub poll_token: String,
+    pub expires_in: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DevicePoll {
+    pub poll_token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DeviceApprove {
+    pub code: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

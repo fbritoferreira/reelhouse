@@ -36,6 +36,10 @@ impl Client {
         self
     }
 
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+
     pub fn token(&self) -> Option<&str> {
         self.token.as_deref()
     }
@@ -159,6 +163,39 @@ impl Client {
     ) -> Result<PlaybackPlan, ClientError> {
         self.post(&format!("/api/v1/items/{id}/playback"), caps)
             .await
+    }
+
+    /// Starts sign-in by code for this device.
+    pub async fn device_start(&self) -> Result<DeviceCode, ClientError> {
+        self.post("/api/v1/auth/device", &()).await
+    }
+
+    /// Checks whether the code was approved. `Ok(None)` while still waiting.
+    pub async fn device_poll(
+        &self,
+        poll_token: &str,
+    ) -> Result<Option<LoginResponse>, ClientError> {
+        let res = self
+            .req(reqwest::Method::POST, "/api/v1/auth/device/poll")
+            .json(&DevicePoll {
+                poll_token: poll_token.into(),
+            })
+            .send()
+            .await?;
+        match res.status().as_u16() {
+            200 => Ok(Some(res.json().await?)),
+            202 => Ok(None),
+            s => Err(ClientError::Status(s, res.text().await.unwrap_or_default())),
+        }
+    }
+
+    /// Approves a code shown on another device, signing it in as the current user.
+    pub async fn device_approve(&self, code: &str) -> Result<(), ClientError> {
+        self.send_empty(
+            self.req(reqwest::Method::POST, "/api/v1/auth/device/approve")
+                .json(&DeviceApprove { code: code.into() }),
+        )
+        .await
     }
 
     pub async fn put_progress(&self, id: i64, progress: &Progress) -> Result<(), ClientError> {

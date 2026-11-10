@@ -4,6 +4,7 @@ pub mod app;
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod device;
 pub mod error;
 pub mod import;
 pub mod libraries;

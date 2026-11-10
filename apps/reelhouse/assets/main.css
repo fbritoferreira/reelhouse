@@ -194,3 +194,11 @@ input, select {
 html:has(.video.native), html:has(.video.native) body { background: transparent; }
 
 .choices { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* Sign-in by code: the code is the biggest thing on a TV screen, the QR sits under it. */
+.signin { display: flex; flex-wrap: wrap; gap: 3rem 5rem; align-items: flex-start; }
+.code-signin { display: flex; flex-direction: column; gap: 0.75rem; max-width: 26rem; }
+.device-code { font-family: var(--display); font-size: clamp(2.5rem, 6vw, 4rem); letter-spacing: 0.08em; margin: 0; color: var(--bulb); font-variant-numeric: tabular-nums; }
+.qr svg { width: 220px; height: 220px; border-radius: 8px; display: block; }
+.code-input { text-transform: uppercase; letter-spacing: 0.1em; font-size: 1.25rem; max-width: 12rem; }
+.linked { color: var(--text); }

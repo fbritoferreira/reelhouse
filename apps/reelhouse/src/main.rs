@@ -6,7 +6,7 @@ mod session;
 mod widgets;
 
 use dioxus::prelude::*;
-use pages::{Admin, Home, ItemPage, LibraryPage, Login, Play, Setup};
+use pages::{Admin, Home, ItemPage, LibraryPage, LinkDevice, Login, Play, Setup};
 
 const STYLE: Asset = asset!("/assets/main.css");
 
@@ -22,6 +22,8 @@ pub enum Route {
         ItemPage { id: i64 },
         #[route("/admin")]
         Admin {},
+        #[route("/link?:code")]
+        LinkDevice { code: String },
     #[end_layout]
     #[route("/login")]
     Login {},
@@ -76,6 +78,7 @@ fn Shell() -> Element {
         header { class: "bar",
             Link { class: "brand", to: Route::Home {}, "Reelhouse" }
             nav { class: "bar-links",
+                Link { to: Route::LinkDevice { code: String::new() }, "Link a device" }
                 if user.as_ref().is_some_and(|u| u.is_admin) {
                     Link { to: Route::Admin {}, "Manage" }
                 }
