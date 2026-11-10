@@ -180,3 +180,45 @@ async fn artwork_requires_a_token() {
     let (status, _) = call(&app, "GET", "/api/v1/items/1/poster", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn scan_finishes_when_the_request_is_dropped() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/3/search/movie"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(std::time::Duration::from_millis(500))
+                .set_body_json(json!({"results": [{"id": 949, "title": "Heat", "overview": "Obsessive crime."}]})),
+        )
+        .mount(&server)
+        .await;
+    let db = reelhouse_server::db::open_memory().await.unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let (lib, id) = movie(&db, dir.path(), "Heat", 1995).await;
+    let app = app_on(db.clone(), config_for(&server));
+    let token = admin_token(&app).await;
+
+    // The browser leaves the page while the scan is still waiting on TMDB.
+    let req = Request::post(format!("/api/v1/libraries/{lib}/scan"))
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let dropped = tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        app.clone().oneshot(req),
+    )
+    .await;
+    assert!(
+        dropped.is_err(),
+        "request should still be running when dropped"
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    let (overview,): (Option<String>,) = sqlx::query_as("SELECT overview FROM items WHERE id = ?")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(overview.as_deref(), Some("Obsessive crime."));
+}
