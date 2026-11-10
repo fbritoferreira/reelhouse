@@ -2,8 +2,10 @@
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use reelhouse_api::{
-    Capabilities, PlaybackMethod, PlaybackPlan, VodEpisode, VodGroup, VodMovie, VodShow,
+    Capabilities, PlaybackMethod, PlaybackPlan, Progress, VodEpisode, VodGroup, VodMovie, VodShow,
+    VodTitle,
 };
 use serde::Deserialize;
 
@@ -50,22 +52,25 @@ pub struct GroupQuery {
 
 pub async fn movies(
     State(state): State<AppState>,
-    _user: CurrentUser,
+    CurrentUser(user): CurrentUser,
     Query(q): Query<GroupQuery>,
 ) -> ApiResult<Json<Vec<VodMovie>>> {
-    let rows: Vec<(i64, String, Option<i64>, Option<String>)> = sqlx::query_as(&format!(
-        "SELECT id, title, year, poster_url FROM vod_items WHERE kind = 'movie' AND {IN_GROUP} ORDER BY id"
+    let rows: Vec<TitleRow> = sqlx::query_as(&format!(
+        "{TITLE_SELECT} WHERE v.kind = 'movie' AND {IN_GROUP} ORDER BY v.id"
     ))
     .bind(&q.group)
+    .bind(user.id)
     .fetch_all(&state.db)
     .await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(id, title, year, poster_url)| VodMovie {
-                id,
-                title,
-                year,
-                poster_url,
+            .map(|r| VodMovie {
+                progress: r.progress(),
+                id: r.id,
+                title: r.title,
+                year: r.year,
+                poster_url: r.poster_url,
+                duration_s: r.duration_s,
             })
             .collect(),
     ))
@@ -101,38 +106,132 @@ pub struct ShowQuery {
     show: String,
 }
 
-#[derive(sqlx::FromRow)]
-struct EpisodeRow {
-    id: i64,
-    title: String,
-    season_no: Option<i64>,
-    episode_no: Option<i64>,
-    poster_url: Option<String>,
-}
-
 pub async fn episodes(
     State(state): State<AppState>,
-    _user: CurrentUser,
+    CurrentUser(user): CurrentUser,
     Query(q): Query<ShowQuery>,
 ) -> ApiResult<Json<Vec<VodEpisode>>> {
-    let rows: Vec<EpisodeRow> = sqlx::query_as(
-        "SELECT id, title, season_no, episode_no, poster_url FROM vod_items \
-         WHERE kind = 'episode' AND show_title = ? ORDER BY season_no, episode_no, id",
-    )
+    let rows: Vec<TitleRow> = sqlx::query_as(&format!(
+        "{TITLE_SELECT} WHERE v.kind = 'episode' AND v.show_title = ?1 ORDER BY v.season_no, v.episode_no, v.id"
+    ))
     .bind(&q.show)
+    .bind(user.id)
     .fetch_all(&state.db)
     .await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| VodEpisode {
+                progress: r.progress(),
                 id: r.id,
                 title: r.title,
                 season_no: r.season_no,
                 episode_no: r.episode_no,
                 poster_url: r.poster_url,
+                duration_s: r.duration_s,
             })
             .collect(),
     ))
+}
+
+/// One title with where you are in it.
+pub async fn title(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<VodTitle>> {
+    let r: TitleRow = sqlx::query_as(&format!("{TITLE_SELECT} WHERE v.id = ?1"))
+        .bind(id)
+        .bind(user.id)
+        .fetch_one(&state.db)
+        .await?;
+    Ok(Json(r.into_title()))
+}
+
+/// Titles started and not finished, most recent first.
+pub async fn continue_watching(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> ApiResult<Json<Vec<VodTitle>>> {
+    let rows: Vec<TitleRow> = sqlx::query_as(&format!(
+        "{TITLE_SELECT} WHERE ?1 IS NULL AND p.position_s > 0 AND NOT p.played ORDER BY p.updated_at DESC LIMIT 20"
+    ))
+    .bind(None::<i64>)
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(rows.into_iter().map(TitleRow::into_title).collect()))
+}
+
+/// Watched past this share of its length, a title counts as played.
+const PLAYED_FRACTION: f64 = 0.92;
+
+pub async fn put_progress(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Json(p): Json<Progress>,
+) -> ApiResult<StatusCode> {
+    let (duration,): (Option<f64>,) =
+        sqlx::query_as("SELECT duration_s FROM vod_items WHERE id = ?")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
+    let played =
+        p.played || duration.is_some_and(|d| d > 0.0 && p.position_s >= PLAYED_FRACTION * d);
+    sqlx::query(
+        "INSERT INTO vod_progress (user_id, vod_id, position_s, played, updated_at) VALUES (?, ?, ?, ?, ?) \
+         ON CONFLICT (user_id, vod_id) DO UPDATE SET position_s = excluded.position_s, \
+         played = excluded.played, updated_at = excluded.updated_at",
+    )
+    .bind(user.id)
+    .bind(id)
+    .bind(p.position_s.max(0.0))
+    .bind(played)
+    .bind(crate::auth::now())
+    .execute(&state.db)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A title joined with the asking person's progress. Binds: `?1` the filter value, `?2` the user.
+const TITLE_SELECT: &str = "SELECT v.id, v.title, v.year, v.show_title, v.season_no, v.episode_no, v.poster_url, \
+     v.duration_s, p.position_s, p.played FROM vod_items v \
+     LEFT JOIN vod_progress p ON p.vod_id = v.id AND p.user_id = ?2";
+
+#[derive(sqlx::FromRow)]
+struct TitleRow {
+    id: i64,
+    title: String,
+    year: Option<i64>,
+    show_title: Option<String>,
+    season_no: Option<i64>,
+    episode_no: Option<i64>,
+    poster_url: Option<String>,
+    duration_s: Option<f64>,
+    position_s: Option<f64>,
+    played: Option<bool>,
+}
+
+impl TitleRow {
+    fn progress(&self) -> Option<Progress> {
+        self.position_s.map(|position_s| Progress {
+            position_s,
+            played: self.played.unwrap_or(false),
+        })
+    }
+
+    fn into_title(self) -> VodTitle {
+        VodTitle {
+            progress: self.progress(),
+            id: self.id,
+            title: self.title,
+            show_title: self.show_title,
+            season_no: self.season_no,
+            episode_no: self.episode_no,
+            poster_url: self.poster_url,
+            duration_s: self.duration_s,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -157,6 +256,14 @@ pub async fn playback(
     let info = crate::scan::probe::probe(std::path::Path::new(&url))
         .await
         .map_err(|e| ApiError::BadGateway(format!("the title would not open: {e:#}")))?;
+    // Remembered so progress can tell when a title has been watched to the end.
+    if let Some(d) = info.duration_s {
+        sqlx::query("UPDATE vod_items SET duration_s = ? WHERE id = ?")
+            .bind(d)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
+    }
     let method = match decide(&info, &caps) {
         PlaybackMethod::Direct => PlaybackMethod::Remux,
         m => m,

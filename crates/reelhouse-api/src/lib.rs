@@ -249,6 +249,24 @@ pub struct VodMovie {
     pub title: String,
     pub year: Option<i64>,
     pub poster_url: Option<String>,
+    /// Known once the title has been played.
+    #[serde(default)]
+    pub duration_s: Option<f64>,
+    #[serde(default)]
+    pub progress: Option<Progress>,
+}
+
+/// One on-demand title with where you are in it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VodTitle {
+    pub id: i64,
+    pub title: String,
+    pub show_title: Option<String>,
+    pub season_no: Option<i64>,
+    pub episode_no: Option<i64>,
+    pub poster_url: Option<String>,
+    pub duration_s: Option<f64>,
+    pub progress: Option<Progress>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -266,6 +284,10 @@ pub struct VodEpisode {
     pub season_no: Option<i64>,
     pub episode_no: Option<i64>,
     pub poster_url: Option<String>,
+    #[serde(default)]
+    pub duration_s: Option<f64>,
+    #[serde(default)]
+    pub progress: Option<Progress>,
 }
 
 /// One of a source's groups, and whether Live TV shows it.

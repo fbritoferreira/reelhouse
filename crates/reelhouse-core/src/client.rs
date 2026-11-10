@@ -257,6 +257,23 @@ impl Client {
         .await
     }
 
+    pub async fn vod_title(&self, id: i64) -> Result<VodTitle, ClientError> {
+        self.get(&format!("/api/v1/vod/{id}")).await
+    }
+
+    /// On-demand titles started and not finished, most recent first.
+    pub async fn vod_continue(&self) -> Result<Vec<VodTitle>, ClientError> {
+        self.get("/api/v1/vod/continue").await
+    }
+
+    pub async fn put_vod_progress(&self, id: i64, p: &Progress) -> Result<(), ClientError> {
+        self.send_empty(
+            self.req(reqwest::Method::PUT, &format!("/api/v1/vod/{id}/progress"))
+                .json(p),
+        )
+        .await
+    }
+
     /// How to play an on-demand title, starting `start_s` seconds in.
     pub async fn vod_playback(
         &self,

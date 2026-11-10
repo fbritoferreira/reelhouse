@@ -159,16 +159,20 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
             programmes += 1;
         }
     }
-    // On-demand titles carry no state of their own (progress lives elsewhere), so they are
-    // replaced wholesale.
-    sqlx::query("DELETE FROM vod_items WHERE source_id = ?")
-        .bind(source_id)
-        .execute(&mut *tx)
-        .await?;
+    // On-demand titles keep their ids across refreshes (people's progress hangs off them):
+    // upsert by URL, then drop the ones this refresh did not list.
+    let seen = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
     for v in &vod {
         sqlx::query(
-            "INSERT OR IGNORE INTO vod_items (source_id, kind, title, year, show_title, season_no, episode_no, \
-             poster_url, group_title, stream_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO vod_items (source_id, kind, title, year, show_title, season_no, episode_no, \
+             poster_url, group_title, stream_url, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT (source_id, stream_url) DO UPDATE SET kind = excluded.kind, title = excluded.title, \
+             year = excluded.year, show_title = excluded.show_title, season_no = excluded.season_no, \
+             episode_no = excluded.episode_no, poster_url = excluded.poster_url, \
+             group_title = excluded.group_title, seen = excluded.seen",
         )
         .bind(source_id)
         .bind(match v.kind {
@@ -183,9 +187,15 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         .bind(&v.poster_url)
         .bind(&v.group_title)
         .bind(&v.stream_url)
+        .bind(seen)
         .execute(&mut *tx)
         .await?;
     }
+    sqlx::query("DELETE FROM vod_items WHERE source_id = ? AND seen != ?")
+        .bind(source_id)
+        .bind(seen)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(RefreshReport {
         channels: ids.len() as u64,
