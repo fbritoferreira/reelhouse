@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::{delete, get, post, put};
 use sqlx::SqlitePool;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
 use crate::stream::hls::Sessions;
@@ -32,7 +33,8 @@ impl AppState {
 pub const FEATURES: &[&str] = &["libraries", "users", "hls"];
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let web_dir = state.config.web_dir.clone();
+    let api = Router::new()
         .route("/api/v1/server", get(users::server_info))
         .route("/api/v1/setup", post(users::setup))
         .route("/api/v1/auth/login", post(users::login))
@@ -53,5 +55,12 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
-        .with_state(state)
+        .with_state(state);
+    match web_dir {
+        // Unknown paths fall back to index.html so the app's own routes load on refresh.
+        Some(dir) => api.fallback_service(
+            ServeDir::new(&dir).not_found_service(ServeFile::new(dir.join("index.html"))),
+        ),
+        None => api,
+    }
 }

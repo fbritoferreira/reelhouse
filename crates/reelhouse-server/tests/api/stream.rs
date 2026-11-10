@@ -193,3 +193,23 @@ async fn file_requires_token() {
     let (status, _, _) = get(&app, "/api/v1/items/1/file", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn hls_segments_load_without_token_query() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let (app, token, id, _dir) = setup(Duration::from_secs(60)).await;
+    let url = start_hls(&app, &token, id).await;
+    // Wait for the playlist, then fetch the init segment the way a player does: relative, no token.
+    assert_eq!(get(&app, &url, None).await.0, StatusCode::OK);
+    let init = url.replace("index.m3u8", "init.mp4");
+    assert_eq!(get(&app, &init, None).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn unknown_hls_session_is_404() {
+    let app = super::common::app().await;
+    let (status, _, _) = get(&app, "/api/v1/hls/not-a-session/index.m3u8", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

@@ -52,7 +52,7 @@ async fn serve_file(path: std::path::PathBuf, req: Request) -> ApiResult<Respons
 
 pub async fn playback(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
+    _user: CurrentUser,
     Path(id): Path<i64>,
     Json(caps): Json<Capabilities>,
 ) -> ApiResult<Json<PlaybackPlan>> {
@@ -61,12 +61,9 @@ pub async fn playback(
     let url = match method {
         PlaybackMethod::Direct => format!("/api/v1/items/{id}/file"),
         _ => {
-            let session = state.hls.start(
-                std::path::Path::new(&path),
-                method,
-                caps.max_height,
-                user.id,
-            )?;
+            let session = state
+                .hls
+                .start(std::path::Path::new(&path), method, caps.max_height)?;
             format!("/api/v1/hls/{session}/index.m3u8")
         }
     };
@@ -87,16 +84,12 @@ pub async fn file(
 /// A playlist or segment from a running HLS session; waits up to 15 s for ffmpeg to write it.
 pub async fn hls_file(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
     Path((session, name)): Path<(String, String)>,
     req: Request,
 ) -> ApiResult<Response> {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
-        let path = state
-            .hls
-            .file(&session, &name, user.id)
-            .ok_or(ApiError::NotFound)?;
+        let path = state.hls.file(&session, &name).ok_or(ApiError::NotFound)?;
         if path.exists() {
             return serve_file(path, req).await;
         }
