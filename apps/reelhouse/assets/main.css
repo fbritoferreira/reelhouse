@@ -192,3 +192,5 @@ input, select {
 .video.native { background: transparent; }
 .player:has(.video.native) { background: transparent; }
 html:has(.video.native), html:has(.video.native) body { background: transparent; }
+
+.choices { display: flex; flex-wrap: wrap; gap: 0.5rem; }

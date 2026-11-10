@@ -18,6 +18,15 @@ pub fn Login() -> Element {
     });
     let mut error = use_signal(|| None::<String>);
     let ask_server = session::needs_server();
+    let found = use_resource(move || async move { discover(ask_server).await });
+    // Fill in the address as soon as one server answers, unless the user already typed one.
+    use_effect(move || {
+        if let Some(first) = found.read().as_ref().and_then(|list| list.first().cloned())
+            && server.peek().trim_end_matches('/') == "http:"
+        {
+            server.set(first);
+        }
+    });
     let nav = navigator();
     let submit = move |e: FormEvent| async move {
         e.prevent_default();
@@ -41,11 +50,27 @@ pub fn Login() -> Element {
             form { class: "auth-form", onsubmit: submit,
                 if ask_server {
                     label { "Server address, e.g. http://192.168.1.10:8420"
-                        input { autofocus: true, r#type: "url", value: "{server}", oninput: move |e| server.set(e.value()) }
+                        input { r#type: "url", value: "{server}", oninput: move |e| server.set(e.value()) }
+                    }
+                    match &*found.read() {
+                        None => rsx! { p { class: "quiet", "Looking for Reelhouse on your network…" } },
+                        Some(list) if list.is_empty() => rsx! { p { class: "quiet", "No server found on this network. Type its address." } },
+                        Some(list) if list.len() == 1 => rsx! { p { class: "quiet", "Found Reelhouse at {list[0]}" } },
+                        Some(list) => rsx! {
+                            div { class: "choices",
+                                for base in list.clone() {
+                                    button {
+                                        r#type: "button",
+                                        onclick: { let base = base.clone(); move |_| server.set(base.clone()) },
+                                        "{base}"
+                                    }
+                                }
+                            }
+                        },
                     }
                 }
                 label { "Name"
-                    input { autofocus: !ask_server, value: "{name}", oninput: move |e| name.set(e.value()) }
+                    input { autofocus: true, value: "{name}", oninput: move |e| name.set(e.value()) }
                 }
                 label { "Password"
                     input { r#type: "password", value: "{password}", oninput: move |e| password.set(e.value()) }
@@ -107,4 +132,14 @@ pub fn Setup() -> Element {
             }
         }
     }
+}
+
+/// Native apps look for servers on the local network; the web app is served by its server.
+async fn discover(ask: bool) -> Vec<String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if ask {
+        return reelhouse_core::discover::discover().await;
+    }
+    let _ = ask;
+    Vec::new()
 }
