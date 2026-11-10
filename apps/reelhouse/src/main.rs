@@ -95,6 +95,14 @@ fn Shell() -> Element {
             }
         }
     });
+    #[cfg(not(target_arch = "wasm32"))]
+    use_hook(|| {
+        // Not session::client(): that reads context, a hook, which cannot run inside this one.
+        let client = session.peek().client.clone();
+        if client.token().is_some() {
+            downloads::resume_unfinished(client);
+        }
+    });
     let user = session.read().user.clone();
     let libraries = use_resource(|| async move { session::client().libraries().await });
     // Hooks above run on every render; only then leave for sign-in.
