@@ -165,6 +165,23 @@ impl Client {
         .await
     }
 
+    /// Every group of a source, with whether Live TV shows it.
+    pub async fn source_groups(&self, id: i64) -> Result<Vec<SourceGroup>, ClientError> {
+        self.get(&format!("/api/v1/livetv/sources/{id}/groups"))
+            .await
+    }
+
+    pub async fn hide_groups(&self, id: i64, hidden: &HiddenGroups) -> Result<(), ClientError> {
+        self.send_empty(
+            self.req(
+                reqwest::Method::PUT,
+                &format!("/api/v1/livetv/sources/{id}/groups"),
+            )
+            .json(hidden),
+        )
+        .await
+    }
+
     pub async fn tv_sources(&self) -> Result<Vec<TvSource>, ClientError> {
         self.get("/api/v1/livetv/sources").await
     }

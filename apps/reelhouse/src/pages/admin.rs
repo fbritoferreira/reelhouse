@@ -305,6 +305,7 @@ fn refresh_message(
 #[component]
 fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHandler) -> Element {
     let mut refreshing = use_signal(|| false);
+    let mut editing = use_signal(|| false);
     let id = src.id;
     let name = src.name.clone();
     let kind = match src.kind {
@@ -328,6 +329,12 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHan
                 },
                 if refreshing() { "Refreshing…" } else { "Refresh" }
             }
+            button {
+                class: if editing() { "secondary current" } else { "secondary" },
+                "aria-expanded": editing(),
+                onclick: move |_| editing.toggle(),
+                "Choose groups"
+            }
             ConfirmRemove {
                 what: src.name.clone(),
                 on_confirm: {
@@ -345,6 +352,11 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHan
                         });
                     }
                 },
+            }
+        }
+        if editing() {
+            li { class: "group-picker",
+                GroupPicker { source: id, status, on_done: move |_| editing.set(false) }
             }
         }
     }
@@ -370,6 +382,112 @@ fn ConfirmRemove(what: String, on_confirm: EventHandler) -> Element {
             }
         } else {
             button { class: "secondary", onclick: move |_| asking.set(true), "Remove" }
+        }
+    }
+}
+
+/// Which of a source's groups Live TV shows: a searchable checklist.
+#[component]
+fn GroupPicker(source: i64, status: Signal<Option<String>>, on_done: EventHandler) -> Element {
+    let groups = use_resource(move || async move { client().source_groups(source).await });
+    // Hidden group names; "" is the ungrouped. Filled once the list arrives.
+    let mut hidden = use_signal(|| None::<std::collections::HashSet<String>>);
+    let mut filter = use_signal(String::new);
+    let mut saving = use_signal(|| false);
+    let list = match &*groups.read() {
+        Some(Ok(list)) => list.clone(),
+        Some(Err(e)) => return rsx! { p { class: "notice", "{describe(e)}" } },
+        None => return rsx! { p { class: "quiet", "Loading this source's groups" } },
+    };
+    let key = |g: &reelhouse_api::SourceGroup| g.name.clone().unwrap_or_default();
+    if hidden.peek().is_none() {
+        hidden.set(Some(list.iter().filter(|g| !g.shown).map(key).collect()));
+    }
+    let hidden_now = hidden().unwrap_or_default();
+    let needle = filter().to_lowercase();
+    let matching: Vec<_> = list
+        .iter()
+        .filter(|g| key(g).to_lowercase().contains(&needle))
+        .cloned()
+        .collect();
+    let shown_count = list.len() - hidden_now.len();
+    let mut set_all = move |show: bool, names: Vec<String>| {
+        let mut h = hidden().unwrap_or_default();
+        for n in names {
+            if show {
+                h.remove(&n);
+            } else {
+                h.insert(n);
+            }
+        }
+        hidden.set(Some(h));
+    };
+    let names: Vec<String> = matching.iter().map(key).collect();
+    let names2 = names.clone();
+    rsx! {
+        div { class: "group-picker-head",
+            input {
+                r#type: "search",
+                placeholder: "Find a group",
+                "aria-label": "Find a group",
+                value: "{filter}",
+                oninput: move |e| filter.set(e.value()),
+            }
+            span { class: "quiet", "{shown_count} of {list.len()} groups shown" }
+            button { class: "secondary", onclick: move |_| set_all(true, names.clone()), "Show these" }
+            button { class: "secondary", onclick: move |_| set_all(false, names2.clone()), "Hide these" }
+        }
+        ul { class: "group-checks",
+            for g in matching {
+                li { key: "{key(&g)}",
+                    label {
+                        input {
+                            r#type: "checkbox",
+                            checked: !hidden_now.contains(&key(&g)),
+                            onchange: {
+                                let k = key(&g);
+                                move |e: FormEvent| {
+                                    let mut h = hidden().unwrap_or_default();
+                                    if e.checked() {
+                                        h.remove(&k);
+                                    } else {
+                                        h.insert(k.clone());
+                                    }
+                                    hidden.set(Some(h));
+                                }
+                            },
+                        }
+                        span { "{g.name.clone().unwrap_or_else(|| \"Other channels\".into())}" }
+                        span { class: "quiet", "{g.channels}" }
+                    }
+                }
+            }
+        }
+        div { class: "group-picker-actions",
+            button {
+                class: "primary",
+                disabled: saving(),
+                onclick: move |_| async move {
+                    saving.set(true);
+                    let body = reelhouse_api::HiddenGroups {
+                        hidden: hidden()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|n| Some(n).filter(|n| !n.is_empty()))
+                            .collect(),
+                    };
+                    match client().hide_groups(source, &body).await {
+                        Ok(()) => {
+                            status.set(Some("Saved. Live TV shows only the groups you chose.".into()));
+                            on_done.call(());
+                        }
+                        Err(e) => status.set(Some(describe(&e))),
+                    }
+                    saving.set(false);
+                },
+                if saving() { "Saving…" } else { "Save groups" }
+            }
+            button { class: "secondary", onclick: move |_| on_done.call(()), "Cancel" }
         }
     }
 }
