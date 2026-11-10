@@ -7,3 +7,10 @@ title = "Reelhouse player prototype"
 [bundle]
 identifier = "dev.reelhouse.proto"
 publisher = "Reelhouse"
+
+# Spike only: test media is served over plain HTTP from the dev Mac.
+[ios.plist]
+UIBackgroundModes = ["audio"]
+
+[ios.plist.NSAppTransportSecurity]
+NSAllowsArbitraryLoads = true

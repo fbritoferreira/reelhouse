@@ -3763,6 +3763,7 @@ dependencies = [
  "dioxus",
  "futures-timer",
  "js-sys",
+ "manganis",
  "wasm-bindgen",
  "web-sys",
 ]

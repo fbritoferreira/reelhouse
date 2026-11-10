@@ -20,7 +20,7 @@ sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "emulator" "platforms;andro
 
 ```sh
 ./media/make-media.sh                       # hevc10.mkv + hevc10.mp4
-python3 -m http.server 8000 -d media        # serve to devices on the LAN
+npx -y http-server@14.1.1 media -p 8765 -a 0.0.0.0 --cors -s   # needs Range requests; AVPlayer refuses python http.server
 ```
 
 HLS stream: https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8 (sends CORS headers; Apple's bipbop stream does not, so browsers cannot load it)
