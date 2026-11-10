@@ -87,6 +87,10 @@ async fn scans_movies() {
     assert_eq!(items[0]["title"], "Blade Runner");
     assert_eq!(items[0]["year"], 1982);
     assert!((items[0]["duration_s"].as_f64().unwrap() - 1.0).abs() < 0.2);
+    assert_eq!(
+        items[0]["height"], 240,
+        "the picture's height, for a resolution badge"
+    );
 }
 
 #[tokio::test]

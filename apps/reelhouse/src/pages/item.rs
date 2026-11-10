@@ -166,7 +166,11 @@ fn EpisodeRow(ep: Item, fallback_art: Option<String>) -> Element {
                         }
                     }
                     if !length.is_empty() {
-                        p { class: "quiet episode-length", "{length}" }
+                        p { class: "quiet episode-length", "{length}"
+                            if let Some(q) = crate::widgets::quality(ep.height) {
+                                span { class: "quality", "{q}" }
+                            }
+                        }
                     }
                     if let Some(o) = ep.overview.clone() {
                         p { class: "episode-overview", "{o}" }
