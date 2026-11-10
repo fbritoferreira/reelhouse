@@ -6,6 +6,8 @@ use sqlx::SqlitePool;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
+use crate::livetv::dvr::Recorder;
+use crate::livetv::routes as livetv;
 use crate::stream::hls::Sessions;
 use crate::stream::routes as stream;
 use crate::{import, libraries, progress, users};
@@ -22,6 +24,9 @@ impl AppState {
     pub fn new(db: SqlitePool, config: Config) -> Self {
         let hls = Arc::new(Sessions::default());
         hls.spawn_reaper(config.hls_idle);
+        if let Some(every) = config.dvr_tick {
+            Recorder::new(db.clone(), config.data_dir.join("recordings")).spawn(every);
+        }
         Self {
             db,
             config: Arc::new(config),
@@ -30,7 +35,7 @@ impl AppState {
     }
 }
 
-pub const FEATURES: &[&str] = &["libraries", "users", "hls", "plex_import"];
+pub const FEATURES: &[&str] = &["libraries", "users", "hls", "plex_import", "livetv", "dvr"];
 
 pub fn router(state: AppState) -> Router {
     let web_dir = state.config.web_dir.clone();
@@ -55,6 +60,23 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
+        .route(
+            "/api/v1/livetv/sources",
+            get(livetv::list_sources).post(livetv::create_source),
+        )
+        .route(
+            "/api/v1/livetv/sources/{id}/refresh",
+            post(livetv::refresh_source),
+        )
+        .route("/api/v1/livetv/channels", get(livetv::channels))
+        .route("/api/v1/livetv/channels/{id}/play", post(livetv::play))
+        .route("/api/v1/livetv/guide", get(livetv::guide))
+        .route(
+            "/api/v1/livetv/rules",
+            get(livetv::rules).post(livetv::create_rule),
+        )
+        .route("/api/v1/livetv/rules/{id}", delete(livetv::delete_rule))
+        .route("/api/v1/livetv/recordings", get(livetv::recordings))
         .route("/api/v1/import/plex", post(import::plex_import))
         .with_state(state);
     match web_dir {

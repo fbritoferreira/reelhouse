@@ -66,3 +66,18 @@ pub async fn admin_token(app: &Router) -> String {
     .await;
     v["token"].as_str().unwrap().to_string()
 }
+
+/// Creates a non-admin user `name` and signs them in.
+pub async fn user_token(app: &Router, admin: &str, name: &str) -> String {
+    let body = json!({"name": name, "password": "password1"});
+    call(
+        app,
+        "POST",
+        "/api/v1/users",
+        Some(admin),
+        Some(body.clone()),
+    )
+    .await;
+    let (_, v) = call(app, "POST", "/api/v1/auth/login", None, Some(body)).await;
+    v["token"].as_str().unwrap().to_string()
+}

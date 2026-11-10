@@ -14,6 +14,8 @@ pub struct Config {
     pub web_dir: Option<PathBuf>,
     /// HLS sessions with no request for this long are stopped.
     pub hls_idle: Duration,
+    /// How often the DVR checks its schedule; `None` leaves the DVR off.
+    pub dvr_tick: Option<Duration>,
 }
 
 impl Config {
@@ -29,6 +31,7 @@ impl Config {
             tmdb_base: TMDB_BASE.parse()?,
             web_dir: std::env::var("REELHOUSE_WEB_DIR").ok().map(PathBuf::from),
             hls_idle: Duration::from_secs(60),
+            dvr_tick: Some(Duration::from_secs(10)),
         })
     }
 
@@ -40,6 +43,7 @@ impl Config {
             tmdb_base: TMDB_BASE.parse().unwrap(),
             web_dir: None,
             hls_idle: Duration::from_secs(60),
+            dvr_tick: None,
         }
     }
 }

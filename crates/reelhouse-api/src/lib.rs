@@ -118,6 +118,127 @@ pub struct PlaybackPlan {
     pub url: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TvSourceKind {
+    M3u,
+    Xtream,
+}
+
+/// An IPTV source. The password is write-only.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TvSource {
+    pub id: i64,
+    pub name: String,
+    pub kind: TvSourceKind,
+    pub url: String,
+    pub username: Option<String>,
+    pub epg_url: Option<String>,
+}
+
+/// For `m3u`, `url` is the playlist. For `xtream`, it is the panel base URL and
+/// `username`/`password` are required. `epg_url` overrides the panel's own guide.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct NewTvSource {
+    pub name: String,
+    pub kind: TvSourceKind,
+    pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub epg_url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RefreshReport {
+    pub channels: u64,
+    pub programmes: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Channel {
+    pub id: i64,
+    pub source_id: i64,
+    pub number: Option<i64>,
+    pub name: String,
+    pub logo_url: Option<String>,
+    pub group_title: Option<String>,
+}
+
+/// Times are Unix seconds.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Programme {
+    pub id: i64,
+    pub channel_id: i64,
+    pub start: i64,
+    pub stop: i64,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct GuideChannel {
+    pub channel: Channel,
+    pub programmes: Vec<Programme>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleKind {
+    Once,
+    Series,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RecordingRule {
+    pub id: i64,
+    pub kind: RuleKind,
+    pub channel_id: i64,
+    pub programme_id: Option<i64>,
+    pub series_title: Option<String>,
+    pub padding_before_s: i64,
+    pub padding_after_s: i64,
+    pub keep_last: Option<i64>,
+}
+
+/// `once` needs `programme_id`. `series` needs `programme_id` (its channel and series are
+/// used) or `channel_id` plus `series_title`. `keep_last` deletes older recordings of a series.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct NewRecordingRule {
+    pub kind: RuleKind,
+    pub programme_id: Option<i64>,
+    pub channel_id: Option<i64>,
+    pub series_title: Option<String>,
+    #[serde(default)]
+    pub padding_before_s: i64,
+    #[serde(default)]
+    pub padding_after_s: i64,
+    pub keep_last: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordingStatus {
+    Scheduled,
+    Recording,
+    Done,
+    Failed,
+}
+
+/// `start` and `stop` include the rule's padding. `item_id` is set once done.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Recording {
+    pub id: i64,
+    pub rule_id: i64,
+    pub channel_id: i64,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub start: i64,
+    pub stop: i64,
+    pub status: RecordingStatus,
+    pub item_id: Option<i64>,
+}
+
 /// Rewrites Plex file paths before matching, for when the two servers mount media differently.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PathRewrite {

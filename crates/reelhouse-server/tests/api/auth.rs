@@ -90,18 +90,8 @@ async fn non_admin_cannot_create_users() {
 async fn server_info_lists_features() {
     let app = app().await;
     let (_, info) = call(&app, "GET", "/api/v1/server", None, None).await;
-    assert!(
-        info["features"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|f| f == "libraries")
-    );
-    assert!(
-        info["features"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|f| f == "plex_import")
-    );
+    let features = info["features"].as_array().unwrap();
+    for f in ["libraries", "plex_import", "livetv", "dvr"] {
+        assert!(features.iter().any(|x| x == f), "missing {f}");
+    }
 }

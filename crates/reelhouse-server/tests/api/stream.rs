@@ -10,14 +10,14 @@ use reelhouse_server::config::Config;
 use serde_json::json;
 use tower::ServiceExt;
 
-fn have_ffmpeg() -> bool {
+pub fn have_ffmpeg() -> bool {
     Command::new("ffmpeg")
         .arg("-version")
         .output()
         .is_ok_and(|o| o.status.success())
 }
 
-fn make_video(path: &Path, secs: u32) {
+pub fn make_video(path: &Path, secs: u32) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let d = format!("testsrc=d={secs}:s=320x240");
     let a = format!("sine=d={secs}");
