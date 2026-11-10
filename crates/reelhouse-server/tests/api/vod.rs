@@ -226,3 +226,48 @@ async fn progress_is_kept_and_listed_and_survives_a_refresh() {
     assert_eq!(films[0]["id"], heat);
     assert_eq!(films[0]["progress"]["position_s"], 1234.0);
 }
+
+#[tokio::test]
+async fn a_title_downloads_through_the_server_with_ranges() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let provider = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/movie/u/p/1.mp4"))
+        .and(header("range", "bytes=6-"))
+        .respond_with(
+            ResponseTemplate::new(206)
+                .insert_header("content-range", "bytes 6-10/11")
+                .set_body_bytes("world"),
+        )
+        .mount(&provider)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/movie/u/p/1.mp4"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes("hello world"))
+        .mount(&provider)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), &format!("{}/movie/u/p/1.mp4", provider.uri()));
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    let id = films[0]["id"].as_i64().unwrap();
+
+    let file = format!("/api/v1/vod/{id}/file?token={token}");
+    let (status, _, body) = super::stream::get(&app, &file, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(&body[..], b"hello world");
+    let (status, range, body) = super::stream::get(&app, &file, Some("bytes=6-")).await;
+    assert_eq!(status, StatusCode::PARTIAL_CONTENT);
+    assert_eq!(range.as_deref(), Some("bytes 6-10/11"));
+    assert_eq!(&body[..], b"world");
+}

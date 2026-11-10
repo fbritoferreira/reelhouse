@@ -844,3 +844,6 @@ button.secondary.current { background: var(--surface-raised); }
   position: absolute; top: 0.5rem; left: 0.5rem; margin: 0;
   background: rgba(21, 13, 23, 0.72); border-color: rgba(255, 200, 97, 0.55); color: var(--bulb);
 }
+.vod-film-text { display: flex; flex-direction: column; gap: 0.6rem; }
+.vod-show .episode-item { display: flex; align-items: center; gap: 0.5rem; }
+.vod-show .episode-item .vod-episode { flex: 1; min-width: 0; }

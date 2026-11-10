@@ -283,6 +283,17 @@ pub fn summary(ids: &[i64]) -> (usize, bool) {
     (done, busy)
 }
 
+/// Library items download their file; on-demand titles (kept under negative ids, see
+/// `pages::vod::vod_item`)
+/// come through the server from their provider.
+fn file_path(id: i64) -> String {
+    if id < 0 {
+        format!("/api/v1/vod/{}/file", -id)
+    } else {
+        format!("/api/v1/items/{id}/file")
+    }
+}
+
 fn fetch(client: &Client, dir: &Path, id: i64) -> Result<(), String> {
     let path = media_path(dir, id);
     let offset = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
@@ -290,7 +301,7 @@ fn fetch(client: &Client, dir: &Path, id: i64) -> Result<(), String> {
         .timeout(None)
         .build()
         .map_err(|e| e.to_string())?
-        .get(format!("{}/api/v1/items/{id}/file", client.base()))
+        .get(format!("{}{}", client.base(), file_path(id)))
         .header("Range", format!("bytes={offset}-"));
     if let Some(token) = client.token() {
         req = req.bearer_auth(token);
@@ -382,13 +393,15 @@ fn save_art(client: &Client, dir: &Path, item: &Item) {
         ("backdrop", &item.backdrop_url),
     ] {
         let Some(url) = url else { continue };
-        let url = if url.starts_with('/') {
+        let own = url.starts_with('/');
+        let url = if own {
             format!("{}{url}", client.base())
         } else {
             url.clone()
         };
         let mut req = reqwest::blocking::Client::new().get(url);
-        if let Some(token) = client.token() {
+        // The session token goes to our own server only, never to an image host.
+        if let (true, Some(token)) = (own, client.token()) {
             req = req.bearer_auth(token);
         }
         if let Some(bytes) = req
@@ -471,6 +484,12 @@ mod tests {
         ];
         let ids: Vec<i64> = unfinished(&list).iter().map(|i| i.id).collect();
         assert_eq!(ids, vec![2, 4]);
+    }
+
+    #[test]
+    fn on_demand_titles_download_through_the_server() {
+        assert_eq!(file_path(7), "/api/v1/items/7/file");
+        assert_eq!(file_path(-7), "/api/v1/vod/7/file");
     }
 
     #[test]

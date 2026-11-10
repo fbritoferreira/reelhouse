@@ -290,3 +290,46 @@ pub async fn playback(
         duration_s: info.duration_s,
     }))
 }
+
+/// The title's file, passed through from the provider so it can be downloaded: Range requests
+/// go upstream and partial responses come back, so an interrupted download resumes. The
+/// provider's URL, which carries its login, never leaves the server.
+pub async fn file(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+    headers: axum::http::HeaderMap,
+) -> ApiResult<axum::response::Response> {
+    use axum::http::header;
+    let (url,): (String,) = sqlx::query_as("SELECT stream_url FROM vod_items WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    let mut upstream = reqwest::Client::new().get(&url);
+    if let Some(range) = headers.get(header::RANGE) {
+        upstream = upstream.header(header::RANGE, range);
+    }
+    let res = upstream
+        .send()
+        .await
+        .map_err(|e| ApiError::BadGateway(format!("the provider did not answer: {e}")))?;
+    let status = res.status();
+    if !status.is_success() {
+        return Err(ApiError::BadGateway(format!(
+            "the provider answered {status}"
+        )));
+    }
+    let mut out = axum::response::Response::builder().status(status.as_u16());
+    for name in [
+        header::CONTENT_TYPE,
+        header::CONTENT_LENGTH,
+        header::CONTENT_RANGE,
+        header::ACCEPT_RANGES,
+    ] {
+        if let Some(v) = res.headers().get(&name) {
+            out = out.header(name, v.clone());
+        }
+    }
+    out.body(axum::body::Body::from_stream(res.bytes_stream()))
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))
+}
