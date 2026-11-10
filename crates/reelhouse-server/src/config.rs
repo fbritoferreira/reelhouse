@@ -10,6 +10,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub tmdb_api_key: Option<String>,
     pub tmdb_base: url::Url,
+    /// Built web app to serve at `/`, if any.
+    pub web_dir: Option<PathBuf>,
     /// HLS sessions with no request for this long are stopped.
     pub hls_idle: Duration,
 }
@@ -25,6 +27,7 @@ impl Config {
                 .into(),
             tmdb_api_key: std::env::var("TMDB_API_KEY").ok().filter(|k| !k.is_empty()),
             tmdb_base: TMDB_BASE.parse()?,
+            web_dir: std::env::var("REELHOUSE_WEB_DIR").ok().map(PathBuf::from),
             hls_idle: Duration::from_secs(60),
         })
     }
@@ -35,6 +38,7 @@ impl Config {
             data_dir,
             tmdb_api_key: None,
             tmdb_base: TMDB_BASE.parse().unwrap(),
+            web_dir: None,
             hls_idle: Duration::from_secs(60),
         }
     }

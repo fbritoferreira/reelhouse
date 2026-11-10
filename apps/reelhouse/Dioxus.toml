@@ -7,3 +7,7 @@ title = "Reelhouse"
 [bundle]
 identifier = "dev.reelhouse.app"
 publisher = "Reelhouse"
+
+# `dx serve` forwards API calls to a local reelhouse-server.
+[[web.proxy]]
+backend = "http://127.0.0.1:8420/api/"

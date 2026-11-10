@@ -12,7 +12,6 @@ use tokio::process::{Child, Command};
 struct Session {
     dir: tempfile::TempDir,
     child: Child,
-    user_id: i64,
     last_access: Instant,
 }
 
@@ -23,13 +22,7 @@ pub struct Sessions {
 
 impl Sessions {
     /// Starts ffmpeg for `file` and returns the session id.
-    pub fn start(
-        &self,
-        file: &Path,
-        method: PlaybackMethod,
-        max_height: u32,
-        user_id: i64,
-    ) -> Result<String> {
+    pub fn start(&self, file: &Path, method: PlaybackMethod, max_height: u32) -> Result<String> {
         let dir = tempfile::Builder::new()
             .prefix("reelhouse-hls-")
             .tempdir()?;
@@ -40,8 +33,10 @@ impl Sessions {
         match method {
             PlaybackMethod::Transcode => {
                 let scale = format!("scale=-2:'min(ih,{max_height})'");
+                // 8-bit 4:2:0: browsers and most TV decoders cannot play 10-bit H.264.
                 cmd.args([
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-vf", &scale,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+                    "-vf", &scale,
                 ]);
             }
             _ => {
@@ -70,20 +65,21 @@ impl Sessions {
             Session {
                 dir,
                 child,
-                user_id,
                 last_access: Instant::now(),
             },
         );
         Ok(id)
     }
 
-    /// Path of `name` inside the session directory, if the session exists and belongs to `user_id`.
-    pub fn file(&self, id: &str, name: &str, user_id: i64) -> Option<PathBuf> {
+    /// Path of `name` inside the session directory, if the session exists.
+    /// The session id is the credential: 256 random bits, issued only to a signed-in user, and
+    /// players fetch segments by relative URL, which drops any `?token=` query.
+    pub fn file(&self, id: &str, name: &str) -> Option<PathBuf> {
         if name.contains('/') || name.contains("..") {
             return None;
         }
         let mut map = self.inner.lock().unwrap();
-        let s = map.get_mut(id).filter(|s| s.user_id == user_id)?;
+        let s = map.get_mut(id)?;
         s.last_access = Instant::now();
         Some(s.dir.path().join(name))
     }
