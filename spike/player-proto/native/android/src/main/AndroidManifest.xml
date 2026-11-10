@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Merged into the app manifest by Gradle. Dioxus 0.7.10 has no hook for TV launcher entries on
+     MainActivity ([android.raw] application is not injected), so the Google TV launcher entry lives here. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity-alias android:name="dev.reelhouse.proto.TvLauncher"
+            android:targetActivity="dev.dioxus.main.MainActivity"
+            android:exported="true"
+            android:banner="@mipmap/ic_launcher">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+    </application>
+</manifest>

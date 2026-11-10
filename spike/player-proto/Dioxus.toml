@@ -14,3 +14,19 @@ UIBackgroundModes = ["audio"]
 
 [ios.plist.NSAppTransportSecurity]
 NSAllowsArbitraryLoads = true
+
+[android]
+min_sdk = 24
+compile_sdk = 35
+target_sdk = 35
+
+[android.application]
+uses_cleartext_traffic = true
+
+# Google TV: not touch-required. The launcher alias is in native/android/src/main/AndroidManifest.xml.
+[android.raw]
+manifest = """
+<uses-feature android:name="android.software.leanback" android:required="false" />
+<uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+"""
+

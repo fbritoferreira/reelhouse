@@ -22,3 +22,8 @@ pub use stub::Player;
 mod ios;
 #[cfg(target_os = "ios")]
 pub use ios::Player;
+
+#[cfg(target_os = "android")]
+mod android;
+#[cfg(target_os = "android")]
+pub use android::Player;
