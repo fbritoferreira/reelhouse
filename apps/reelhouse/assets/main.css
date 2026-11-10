@@ -424,3 +424,7 @@ html.tv {
 @media (prefers-reduced-motion: reduce) {
   .player-top, .player-controls { transition: none; }
 }
+
+.downloads { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 1.5rem; }
+.downloads li { display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+.downloads .wide { width: 100%; }

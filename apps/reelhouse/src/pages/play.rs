@@ -32,17 +32,25 @@ pub fn Play(id: i64) -> Element {
         let p = p.clone();
         async move {
             let c = client();
-            let item = match c.item(id).await {
-                Ok(i) => i,
-                Err(e) => return error.set(Some(describe(&e))),
+            let local = downloaded(id);
+            // The server knows the latest position; a downloaded copy plays without it.
+            let item = match (c.item(id).await, &local) {
+                (Ok(i), _) => i,
+                (Err(_), Some((_, saved))) => saved.clone(),
+                (Err(e), None) => return error.set(Some(describe(&e))),
             };
             // A live-converted HLS stream only reports what is converted so far; the scan knows the full length.
             let known = item.duration_s.unwrap_or(0.0);
-            let plan = match c.playback(id, &capabilities()).await {
-                Ok(plan) => plan,
-                Err(e) => return error.set(Some(describe(&e))),
-            };
-            p.load(&c.media_url(&plan.url));
+            match &local {
+                Some((file, _)) => p.load(file),
+                None => {
+                    let plan = match c.playback(id, &capabilities()).await {
+                        Ok(plan) => plan,
+                        Err(e) => return error.set(Some(describe(&e))),
+                    };
+                    p.load(&c.media_url(&plan.url));
+                }
+            }
             if let Some(at) = item
                 .progress
                 .filter(|pr| !pr.played)
@@ -197,4 +205,17 @@ pub fn Play(id: i64) -> Element {
             }
         }
     }
+}
+
+/// The downloaded file (as a URL the player opens) and its saved details, if this item is on the device.
+#[cfg(not(target_arch = "wasm32"))]
+fn downloaded(id: i64) -> Option<(String, reelhouse_api::Item)> {
+    let file = crate::downloads::local_file(id)?;
+    let item = crate::downloads::item(id)?;
+    Some((format!("file://{}", file.display()), item))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn downloaded(_id: i64) -> Option<(String, reelhouse_api::Item)> {
+    None
 }

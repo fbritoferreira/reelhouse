@@ -1,4 +1,5 @@
 mod admin;
+mod downloads;
 mod home;
 mod item;
 mod library;
@@ -7,6 +8,7 @@ mod login;
 mod play;
 
 pub use admin::Admin;
+pub use downloads::Downloads;
 pub use home::Home;
 pub use item::ItemPage;
 pub use library::LibraryPage;

@@ -35,20 +35,27 @@ pub fn use_art_handler() {
         let client = session.peek().client.clone();
         let path = request.uri().path().to_string();
         std::thread::spawn(move || {
-            let fetched = api_path(&path).and_then(|api| {
-                let mut req =
-                    reqwest::blocking::Client::new().get(format!("{}{api}", client.base()));
-                if let Some(token) = client.token() {
-                    req = req.bearer_auth(token);
-                }
-                let res = req.send().ok()?.error_for_status().ok()?;
-                let content_type = res
-                    .headers()
-                    .get("content-type")
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("image/jpeg")
-                    .to_string();
-                Some((content_type, res.bytes().ok()?.to_vec()))
+            // Downloaded items keep their artwork on the device, so it shows offline too.
+            let local = path
+                .strip_prefix("/art/")
+                .and_then(|rest| rest.split_once('/'))
+                .and_then(|(id, kind)| crate::downloads::art(id.parse().ok()?, kind));
+            let fetched = local.or_else(|| {
+                api_path(&path).and_then(|api| {
+                    let mut req =
+                        reqwest::blocking::Client::new().get(format!("{}{api}", client.base()));
+                    if let Some(token) = client.token() {
+                        req = req.bearer_auth(token);
+                    }
+                    let res = req.send().ok()?.error_for_status().ok()?;
+                    let content_type = res
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("image/jpeg")
+                        .to_string();
+                    Some((content_type, res.bytes().ok()?.to_vec()))
+                })
             });
             let response = match fetched {
                 Some((content_type, bytes)) => Response::builder()
