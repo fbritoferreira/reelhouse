@@ -239,6 +239,16 @@ pub struct StartAt {
     start: Option<f64>,
 }
 
+/// Why the provider would not give us `url`, in plain words, or `otherwise`. The reason ffmpeg
+/// gives is left out: it quotes the provider URL, which carries the provider login.
+async fn refused_or(url: &str, otherwise: &str) -> ApiError {
+    let why = super::provider_status(url)
+        .await
+        .and_then(|s| super::refusal(s, "title"))
+        .unwrap_or_else(|| format!("{otherwise}; try again, or try another title"));
+    ApiError::BadGateway(why)
+}
+
 /// Plays an on-demand title through HLS: the provider's file is probed, then remuxed, or
 /// converted when this client cannot decode it. It is never handed out directly, since its
 /// URL carries the provider login.
@@ -253,9 +263,10 @@ pub async fn playback(
         .bind(id)
         .fetch_one(&state.db)
         .await?;
-    let info = crate::scan::probe::probe(std::path::Path::new(&url))
-        .await
-        .map_err(|e| ApiError::BadGateway(format!("the title would not open: {e:#}")))?;
+    let info = match crate::scan::probe::probe(std::path::Path::new(&url)).await {
+        Ok(info) => info,
+        Err(_) => return Err(refused_or(&url, "the title would not open").await),
+    };
     // Remembered so progress can tell when a title has been watched to the end.
     if let Some(d) = info.duration_s {
         sqlx::query("UPDATE vod_items SET duration_s = ? WHERE id = ?")
@@ -278,11 +289,14 @@ pub async fn playback(
     let session = state
         .hls
         .start(&url, method, caps.max_height, start_s, &audio)?;
-    state
+    if state
         .hls
         .ready(&session, std::time::Duration::from_secs(30))
         .await
-        .map_err(|why| ApiError::BadGateway(format!("the title did not start: {why}")))?;
+        .is_err()
+    {
+        return Err(refused_or(&url, "the title did not start").await);
+    }
     Ok(Json(PlaybackPlan {
         method,
         url: format!("/api/v1/hls/{session}/index.m3u8"),
@@ -312,12 +326,14 @@ pub async fn file(
     let res = upstream
         .send()
         .await
-        .map_err(|e| ApiError::BadGateway(format!("the provider did not answer: {e}")))?;
+        // Not the error itself: it quotes the provider URL, login and all.
+        .map_err(|_| ApiError::BadGateway("the provider did not answer".into()))?;
     let status = res.status();
     if !status.is_success() {
-        return Err(ApiError::BadGateway(format!(
-            "the provider answered {status}"
-        )));
+        return Err(ApiError::BadGateway(
+            super::refusal(status.as_u16(), "title")
+                .unwrap_or_else(|| format!("the provider answered {status}")),
+        ));
     }
     let mut out = axum::response::Response::builder().status(status.as_u16());
     for name in [
@@ -400,9 +416,10 @@ pub async fn offline(
         .bind(id)
         .fetch_one(&state.db)
         .await?;
-    let info = crate::scan::probe::probe(std::path::Path::new(&url))
-        .await
-        .map_err(|e| ApiError::BadGateway(format!("the title would not open: {e:#}")))?;
+    let info = match crate::scan::probe::probe(std::path::Path::new(&url)).await {
+        Ok(info) => info,
+        Err(_) => return Err(refused_or(&url, "the title would not open").await),
+    };
     Ok(Json(match decide(&info, &caps) {
         PlaybackMethod::Direct => reelhouse_api::OfflineSource {
             url: format!("/api/v1/vod/{id}/file"),
