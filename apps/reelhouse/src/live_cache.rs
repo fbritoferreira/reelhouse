@@ -74,6 +74,18 @@ pub fn remember_channel(channel: &reelhouse_api::Channel, group: &str) {
     persist();
 }
 
+/// Takes a channel off the recent list: it did not play.
+pub fn forget_channel(id: i64) {
+    {
+        let mut live = LIVE.write();
+        if !live.recent.iter().any(|r| r.id == id) {
+            return;
+        }
+        live.recent.retain(|r| r.id != id);
+    }
+    persist();
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct Place {
     pub group: Option<String>,

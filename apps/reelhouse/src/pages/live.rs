@@ -762,6 +762,8 @@ const BANNER_FOR: u32 = 16;
 fn Tuned(id: i64, group: String) -> Element {
     let player = use_hook(|| Rc::new(Player::new()));
     let mut error = use_signal(|| None::<String>);
+    // Set once the server has the stream going; only then does the channel count as watched.
+    let mut started = use_signal(|| false);
     let mut shown = use_signal(|| 0u32);
     let time = use_clock();
     let nav = navigator();
@@ -806,8 +808,12 @@ fn Tuned(id: i64, group: String) -> Element {
                 Ok(plan) => {
                     p.load(&c.media_url(&plan.url));
                     p.play();
+                    started.set(true);
                 }
-                Err(e) => return error.set(Some(describe(&e))),
+                Err(e) => {
+                    crate::live_cache::forget_channel(id);
+                    return error.set(Some(describe(&e)));
+                }
             }
             loop {
                 futures_timer::Delay::new(Duration::from_millis(250)).await;
@@ -821,11 +827,11 @@ fn Tuned(id: i64, group: String) -> Element {
 
     let channels = guide.read().clone().unwrap_or_default();
     let at = channels.iter().position(|c| c.channel.id == id);
-    // Once the channel is known, it heads the recent list (Home shows it).
+    // Once the channel is known and playing, it heads the recent list (Home shows it).
     let watched = at.map(|i| channels[i].channel.clone());
     let from = group.clone();
     use_effect(use_reactive!(|watched| {
-        if let Some(ch) = &watched {
+        if let Some(ch) = watched.as_ref().filter(|_| started()) {
             crate::live_cache::remember_channel(ch, &from);
         }
     }));
