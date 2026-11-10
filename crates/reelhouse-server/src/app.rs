@@ -17,20 +17,26 @@ pub struct AppState {
     pub db: SqlitePool,
     pub config: Arc<Config>,
     pub hls: Arc<Sessions>,
+    /// Wakes the job worker when work is queued.
+    pub jobs: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
-    /// Builds the state and starts the HLS reaper (needs a tokio runtime).
+    /// Builds the state and starts the HLS reaper and the job worker (needs a tokio runtime).
     pub fn new(db: SqlitePool, config: Config) -> Self {
         let hls = Arc::new(Sessions::default());
         hls.spawn_reaper(config.hls_idle);
         if let Some(every) = config.dvr_tick {
             Recorder::new(db.clone(), config.data_dir.join("recordings")).spawn(every);
         }
+        let config = Arc::new(config);
+        let jobs = Arc::new(tokio::sync::Notify::new());
+        crate::jobs::spawn_worker(db.clone(), config.clone(), jobs.clone());
         Self {
             db,
-            config: Arc::new(config),
+            config,
             hls,
+            jobs,
         }
     }
 }
@@ -66,6 +72,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
+        .route("/api/v1/jobs", get(crate::jobs::list))
+        .route("/api/v1/jobs/{id}", get(crate::jobs::get))
         .route(
             "/api/v1/livetv/sources",
             get(livetv::list_sources).post(livetv::create_source),

@@ -1,7 +1,9 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use reelhouse_api::{Item, ItemKind, Library, LibraryKind, NewLibrary, Progress, ScanReport};
+use reelhouse_api::{
+    Item, ItemKind, Job, JobKind, Library, LibraryKind, NewLibrary, Progress, ScanReport,
+};
 use sqlx::FromRow;
 
 use crate::app::AppState;
@@ -18,10 +20,14 @@ fn kind_str(k: LibraryKind) -> &'static str {
 }
 
 pub async fn get_library(state: &AppState, id: i64) -> ApiResult<Library> {
+    library_in(&state.db, id).await
+}
+
+async fn library_in(db: &sqlx::SqlitePool, id: i64) -> ApiResult<Library> {
     let (id, name, kind, path): (i64, String, String, String) =
         sqlx::query_as("SELECT id, name, kind, path FROM libraries WHERE id = ?")
             .bind(id)
-            .fetch_one(&state.db)
+            .fetch_one(db)
             .await?;
     let kind = if kind == "tv" {
         LibraryKind::Tv
@@ -96,13 +102,24 @@ pub async fn remove(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Queues a scan; the job's result is the `ScanReport`.
 pub async fn scan(
     State(state): State<AppState>,
     _admin: AdminUser,
     Path(id): Path<i64>,
-) -> ApiResult<Json<ScanReport>> {
-    let lib = get_library(&state, id).await?;
-    let config = &state.config;
+) -> ApiResult<(StatusCode, Json<Job>)> {
+    get_library(&state, id).await?;
+    let job = crate::jobs::enqueue(&state, JobKind::ScanLibrary, id).await?;
+    Ok((StatusCode::ACCEPTED, Json(job)))
+}
+
+/// Scans library `id` now; the job worker's side of [`scan`].
+pub async fn run_scan(
+    db: &sqlx::SqlitePool,
+    config: &crate::config::Config,
+    id: i64,
+) -> anyhow::Result<ScanReport> {
+    let lib = library_in(db, id).await?;
     let tmdb = config.tmdb_base.clone().map(|base| {
         let t = Tmdb::new(base, config.tmdb_api_key.clone());
         match &config.tmdb_image_base {
@@ -111,12 +128,7 @@ pub async fn scan(
         }
     });
     let images = config.tmdb_image_base.is_some();
-    // A detached task: if the browser leaves the page, the request is dropped but the scan finishes.
-    let db = state.db.clone();
-    let report = tokio::spawn(async move { scan_library(&db, &lib, tmdb.as_ref(), images).await })
-        .await
-        .map_err(|e| anyhow::anyhow!("scan task failed: {e}"))??;
-    Ok(Json(report))
+    scan_library(db, &lib, tmdb.as_ref(), images).await
 }
 
 #[derive(FromRow)]

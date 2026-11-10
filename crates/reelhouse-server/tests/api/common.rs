@@ -25,7 +25,32 @@ pub async fn app() -> Router {
     app_with(Config::for_tests(std::env::temp_dir())).await
 }
 
+/// One request. A queued job (202 with a job body) is followed until it ends, as a client
+/// would: done gives `(200, result)`, failed after its retries gives `(502, job)`.
 pub async fn call(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    token: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let (status, value) = request(app, method, uri, token, body).await;
+    if status != StatusCode::ACCEPTED || value.get("target_id").is_none() {
+        return (status, value);
+    }
+    let path = format!("/api/v1/jobs/{}", value["id"]);
+    for _ in 0..600 {
+        let (_, job) = request(app, "GET", &path, token, None).await;
+        match job["status"].as_str() {
+            Some("done") => return (StatusCode::OK, job["result"].clone()),
+            Some("failed") => return (StatusCode::BAD_GATEWAY, job),
+            _ => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+        }
+    }
+    panic!("job {path} did not finish");
+}
+
+async fn request(
     app: &Router,
     method: &str,
     uri: &str,

@@ -375,6 +375,40 @@ async fn channels_can_be_searched_by_name() {
 }
 
 #[tokio::test]
+async fn a_cut_short_playlist_keeps_the_old_channels() {
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = dir.path().join("list.m3u");
+    let full: String = (0..10)
+        .map(|i| format!("#EXTINF:-1,Channel {i}\nhttp://example.invalid/{i}.ts\n"))
+        .collect();
+    std::fs::write(&m3u, format!("#EXTM3U\n{full}")).unwrap();
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    let (_, src) = call(
+        &app,
+        "POST",
+        "/api/v1/livetv/sources",
+        Some(&admin),
+        Some(json!({"name": "P", "kind": "m3u", "url": m3u.to_string_lossy()})),
+    )
+    .await;
+    let refresh = format!("/api/v1/livetv/sources/{}/refresh", src["id"]);
+    let (status, _) = call(&app, "POST", &refresh, Some(&admin), None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The provider sends two channels of the ten it had.
+    std::fs::write(&m3u, "#EXTM3U\n#EXTINF:-1,Channel 0\nhttp://example.invalid/0.ts\n#EXTINF:-1,Channel 1\nhttp://example.invalid/1.ts\n").unwrap();
+    let (status, job) = call(&app, "POST", &refresh, Some(&admin), None).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(
+        job["last_error"].as_str().unwrap().contains("2 channels"),
+        "{job}"
+    );
+    let (_, chans) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    assert_eq!(chans.as_array().unwrap().len(), 10);
+}
+
+#[tokio::test]
 async fn refresh_keeps_channel_ids() {
     let dir = tempfile::tempdir().unwrap();
     let (m3u, epg) = write_source(dir.path(), "http://example.invalid/n.ts", &guide(&[]));
@@ -428,7 +462,7 @@ async fn xtream_refresh_uses_panel_guide() {
 }
 
 #[tokio::test]
-async fn unreachable_source_fails_refresh() {
+async fn unreachable_source_is_retried_three_times_then_fails() {
     let app = app().await;
     let admin = admin_token(&app).await;
     let (_, src) = call(
@@ -439,7 +473,7 @@ async fn unreachable_source_fails_refresh() {
         Some(json!({"name": "gone", "kind": "m3u", "url": "/does/not/exist.m3u"})),
     )
     .await;
-    let (status, _) = call(
+    let (status, job) = call(
         &app,
         "POST",
         &format!("/api/v1/livetv/sources/{}/refresh", src["id"]),
@@ -447,7 +481,28 @@ async fn unreachable_source_fails_refresh() {
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert_eq!(job["status"], "failed");
+    assert_eq!(job["attempts"], 4, "the first run and three retries");
+    assert!(
+        job["last_error"].as_str().unwrap().contains("exist.m3u"),
+        "{job}"
+    );
+}
+
+#[tokio::test]
+async fn refresh_is_queued_and_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (status, jobs) = call(&app, "GET", "/api/v1/jobs", Some(&admin), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(jobs[0]["kind"], "refresh_source");
+    assert_eq!(jobs[0]["status"], "done");
+    assert_eq!(jobs[0]["attempts"], 1);
+    assert_eq!(jobs[0]["result"]["channels"], 2);
 }
 
 #[tokio::test]

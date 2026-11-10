@@ -690,3 +690,14 @@ button.secondary.current { background: var(--surface-raised); }
 .vod-episode .play-icon { color: var(--muted); }
 .tv .vod-show-poster { width: 6rem; }
 .vod-cell { display: contents; }
+
+.jobs .job { gap: 0.75rem; }
+.job-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--muted); flex: none; }
+.job.running .job-dot { background: var(--bulb); box-shadow: 0 0 10px var(--bulb-glow); }
+.job.retrying .job-dot { background: var(--bulb); opacity: 0.6; }
+.job.failed .job-dot { background: #c2412d; }
+.job.done .job-dot { background: #6fae7d; }
+.job-state { margin-left: auto; text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+@media (prefers-reduced-motion: no-preference) {
+  .job.running .job-dot { animation: lamp 1.6s ease-in-out infinite; }
+}

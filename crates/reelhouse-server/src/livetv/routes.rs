@@ -4,9 +4,9 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use reelhouse_api::{
-    Channel, ChannelGroup, GuideChannel, HiddenGroups, NewRecordingRule, NewTvSource,
-    PlaybackMethod, PlaybackPlan, Programme, Recording, RecordingRule, RefreshReport, RuleKind,
-    SourceGroup, TvSource, TvSourceKind,
+    Channel, ChannelGroup, GuideChannel, HiddenGroups, Job, JobKind, NewRecordingRule, NewTvSource,
+    PlaybackMethod, PlaybackPlan, Programme, Recording, RecordingRule, RuleKind, SourceGroup,
+    TvSource, TvSourceKind,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
@@ -171,20 +171,18 @@ pub async fn delete_source(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Queues a refresh; the job's result is the `RefreshReport`.
 pub async fn refresh_source(
     State(state): State<AppState>,
     _admin: AdminUser,
     Path(id): Path<i64>,
-) -> ApiResult<Json<RefreshReport>> {
+) -> ApiResult<(StatusCode, Json<Job>)> {
     sqlx::query("SELECT 1 FROM tv_sources WHERE id = ?")
         .bind(id)
         .fetch_one(&state.db)
         .await?;
-    // A source that cannot be read is the admin's to fix, so say why.
-    super::refresh(&state.db, id)
-        .await
-        .map(Json)
-        .map_err(|e| ApiError::BadRequest(format!("{e:#}")))
+    let job = crate::jobs::enqueue(&state, JobKind::RefreshSource, id).await?;
+    Ok((StatusCode::ACCEPTED, Json(job)))
 }
 
 #[derive(FromRow)]
