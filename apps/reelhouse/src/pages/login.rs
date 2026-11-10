@@ -179,6 +179,7 @@ fn CodeSignIn(base: String) -> Element {
         move || {
             let base = base.clone();
             async move {
+                let mut waited = 0u32;
                 loop {
                     futures_timer::Delay::new(std::time::Duration::from_secs(3)).await;
                     let Some(Ok(dc)) = code
@@ -186,6 +187,13 @@ fn CodeSignIn(base: String) -> Element {
                         .as_ref()
                         .map(|r| r.as_ref().map(|d| d.poll_token.clone()))
                     else {
+                        // No code (server unreachable or too old): ask again about every 9 seconds.
+                        waited += 1;
+                        if waited.is_multiple_of(3)
+                            && code.peek().as_ref().is_some_and(|r| r.is_err())
+                        {
+                            attempt += 1;
+                        }
                         continue;
                     };
                     match reelhouse_core::Client::new(base.clone())
@@ -212,9 +220,16 @@ fn CodeSignIn(base: String) -> Element {
         None => {
             rsx! { section { class: "code-signin", p { class: "quiet", "Getting a sign-in code…" } } }
         }
-        Some(Err(e)) => {
-            rsx! { section { class: "code-signin", p { class: "notice", "Couldn't reach {base}: {describe(e)}" } } }
-        }
+        Some(Err(reelhouse_core::ClientError::Status(404 | 405, _))) => rsx! {
+            section { class: "code-signin",
+                p { class: "notice", "This server doesn't support sign-in by code yet. Update it, or sign in with a password." }
+            }
+        },
+        Some(Err(e)) => rsx! {
+            section { class: "code-signin",
+                p { class: "notice", "Couldn't get a sign-in code from {base}: {describe(e)}" }
+            }
+        },
         Some(Ok(dc)) => rsx! {
             section { class: "code-signin",
                 h2 { "Sign in with your phone" }
