@@ -253,6 +253,69 @@ pub fn Row(title: String, to: Option<Route>, children: Element) -> Element {
     }
 }
 
+/// Marks a title watched or not. On-demand titles keep their own progress (`on_demand`).
+/// `compact` is the round tick on episode rows; otherwise a labelled button for a title's page.
+#[component]
+pub fn WatchedToggle(
+    id: i64,
+    watched: bool,
+    #[props(default)] compact: bool,
+    #[props(default)] on_demand: bool,
+) -> Element {
+    let mut on = use_signal(|| watched);
+    // A refreshed list brings the server's word.
+    use_effect(use_reactive!(|watched| on.set(watched)));
+    let toggle = move |_| async move {
+        let now = !on();
+        on.set(now);
+        let p = reelhouse_api::Progress {
+            position_s: 0.0,
+            played: now,
+        };
+        let c = crate::session::client();
+        let saved = if on_demand {
+            c.put_vod_progress(id, &p).await
+        } else {
+            c.put_progress(id, &p).await
+        };
+        if saved.is_err() {
+            on.set(!now);
+        }
+    };
+    let label = if on() {
+        "Mark unwatched"
+    } else {
+        "Mark watched"
+    };
+    if compact {
+        rsx! {
+            button {
+                class: if on() { "watched-toggle on" } else { "watched-toggle" },
+                "aria-pressed": on(),
+                "aria-label": label,
+                title: label,
+                onclick: toggle,
+                svg { view_box: "0 0 24 24", "aria-hidden": "true",
+                    path { d: "M5 12.5l4.5 4.5L19 7.5" }
+                }
+            }
+        }
+    } else {
+        rsx! {
+            button {
+                class: if on() { "secondary big watched-button on" } else { "secondary big watched-button" },
+                "aria-pressed": on(),
+                title: label,
+                onclick: toggle,
+                svg { view_box: "0 0 24 24", "aria-hidden": "true",
+                    path { d: "M5 12.5l4.5 4.5L19 7.5" }
+                }
+                if on() { "Watched" } else { "Mark watched" }
+            }
+        }
+    }
+}
+
 /// Play, or Resume with how far in and how much is left.
 #[component]
 pub fn PlayButton(item: Item) -> Element {

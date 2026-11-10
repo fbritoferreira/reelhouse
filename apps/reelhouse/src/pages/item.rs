@@ -5,8 +5,8 @@ use crate::Route;
 use crate::download_ui::{CollectionDownload, DownloadButton, EpisodeDownload};
 use crate::session::client;
 use crate::widgets::{
-    Facts, Hero, LoadError, PlayButton, art_url, describe, episode_name, is_watched, runtime,
-    watched_fraction,
+    Facts, Hero, LoadError, PlayButton, WatchedToggle, art_url, describe, episode_name, is_watched,
+    runtime, watched_fraction,
 };
 
 #[component]
@@ -51,6 +51,7 @@ fn Playable(item: Item) -> Element {
             div { class: "hero-actions",
                 PlayButton { item: item.clone() }
                 DownloadButton { item: item.clone() }
+                WatchedToggle { id: item.id, watched: is_watched(&item) }
             }
             if let Some(o) = item.overview.clone() {
                 p { class: "overview", "{o}" }
@@ -119,15 +120,42 @@ fn ShowView(show: Item, season: Option<i64>) -> Element {
 
 #[component]
 fn Episodes(season: i64, fallback_art: Option<String>) -> Element {
-    let eps = use_resource(use_reactive!(|season| async move {
+    let mut eps = use_resource(use_reactive!(|season| async move {
         client().children(season).await
     }));
+    let mut marking = use_signal(|| false);
     match &*eps.read() {
         None => rsx! { p { class: "quiet", "Loading episodes" } },
         Some(Err(e)) => rsx! { LoadError { error: describe(e) } },
-        Some(Ok(eps)) => rsx! {
+        Some(Ok(list)) => rsx! {
+            {
+                let all_watched = !list.is_empty() && list.iter().all(is_watched);
+                let ids: Vec<i64> = list.iter().map(|e| e.id).collect();
+                rsx! {
+                    div { class: "episodes-head",
+                        button {
+                            class: "secondary",
+                            disabled: marking(),
+                            onclick: move |_| {
+                                let ids = ids.clone();
+                                async move {
+                                    marking.set(true);
+                                    let c = client();
+                                    let p = reelhouse_api::Progress { position_s: 0.0, played: !all_watched };
+                                    for id in ids {
+                                        let _ = c.put_progress(id, &p).await;
+                                    }
+                                    marking.set(false);
+                                    eps.restart();
+                                }
+                            },
+                            if all_watched { "Mark season unwatched" } else { "Mark season watched" }
+                        }
+                    }
+                }
+            }
             ol { class: "episodes",
-                for ep in eps.clone() {
+                for ep in list.clone() {
                     EpisodeRow { key: "{ep.id}", ep: ep.clone(), fallback_art: fallback_art.clone() }
                 }
             }
@@ -161,9 +189,7 @@ fn EpisodeRow(ep: Item, fallback_art: Option<String>) -> Element {
                     p { class: "episode-head",
                         span { class: "episode-number", "{number}" }
                         span { class: "episode-name", "{episode_name(&ep)}" }
-                        if is_watched(&ep) {
-                            span { class: "watched-inline", "aria-label": "Watched", "✓" }
-                        }
+
                     }
                     if !length.is_empty() {
                         p { class: "quiet episode-length", "{length}"
@@ -177,6 +203,7 @@ fn EpisodeRow(ep: Item, fallback_art: Option<String>) -> Element {
                     }
                 }
             }
+            WatchedToggle { id: ep.id, watched: is_watched(&ep), compact: true }
             EpisodeDownload { ep: ep.clone() }
         }
     }
