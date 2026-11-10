@@ -54,6 +54,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/libraries",
             get(libraries::list).post(libraries::create),
         )
+        .route("/api/v1/libraries/{id}", delete(libraries::remove))
         .route("/api/v1/libraries/{id}/scan", post(libraries::scan))
         .route("/api/v1/libraries/{id}/items", get(libraries::items))
         .route("/api/v1/items/{id}", get(libraries::item))
@@ -69,6 +70,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/livetv/sources",
             get(livetv::list_sources).post(livetv::create_source),
         )
+        .route("/api/v1/livetv/sources/{id}", delete(livetv::delete_source))
         .route(
             "/api/v1/livetv/sources/{id}/refresh",
             post(livetv::refresh_source),

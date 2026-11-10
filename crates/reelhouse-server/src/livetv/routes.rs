@@ -100,6 +100,22 @@ pub async fn create_source(
     ))
 }
 
+/// Removes a source with its channels, guide and the recording rules on those channels.
+pub async fn delete_source(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    let done = sqlx::query("DELETE FROM tv_sources WHERE id = ?")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn refresh_source(
     State(state): State<AppState>,
     _admin: AdminUser,

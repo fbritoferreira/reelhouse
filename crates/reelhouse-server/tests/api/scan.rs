@@ -261,3 +261,66 @@ async fn scan_fills_tmdb_metadata() {
         "https://image.tmdb.org/t/p/w500/h.jpg"
     );
 }
+
+#[tokio::test]
+async fn removing_a_library_forgets_its_items_but_keeps_files() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let film = dir.path().join("Heat (1995)/Heat (1995).mp4");
+    make_video(&film);
+    let app = app().await;
+    let token = admin_token(&app).await;
+    let lib = library(&app, &token, "movies", dir.path()).await;
+    call(
+        &app,
+        "POST",
+        &format!("/api/v1/libraries/{lib}/scan"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let (_, items) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/libraries/{lib}/items"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let item = items[0]["id"].as_i64().unwrap();
+
+    let kid = super::common::user_token(&app, &token, "kid").await;
+    let (status, _) = call(
+        &app,
+        "DELETE",
+        &format!("/api/v1/libraries/{lib}"),
+        Some(&kid),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _) = call(
+        &app,
+        "DELETE",
+        &format!("/api/v1/libraries/{lib}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, libs) = call(&app, "GET", "/api/v1/libraries", Some(&token), None).await;
+    assert_eq!(libs, json!([]));
+    let (status, _) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/items/{item}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(film.exists(), "removing a library never touches the media");
+}
