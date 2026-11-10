@@ -16,11 +16,21 @@ extern "Kotlin" {
 
 const CLASS: &str = "dev.reelhouse.app.PlayerBridge";
 
-fn load_class<'a>(env: &mut JNIEnv<'a>, activity: &JObject) -> manganis::jni::errors::Result<JClass<'a>> {
-    let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+fn load_class<'a>(
+    env: &mut JNIEnv<'a>,
+    activity: &JObject,
+) -> manganis::jni::errors::Result<JClass<'a>> {
+    let loader = env
+        .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
+        .l()?;
     let name = env.new_string(CLASS)?;
     let class = env
-        .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
+        .call_method(
+            &loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&name)],
+        )?
         .l()?;
     Ok(JClass::from(class))
 }
@@ -30,7 +40,12 @@ pub fn files_dir() -> Option<String> {
     with_activity(|env, activity| {
         let class = load_class(env, activity).ok()?;
         let dir = env
-            .call_static_method(&class, "filesDir", "(Landroid/app/Activity;)Ljava/lang/String;", &[JValue::Object(activity)])
+            .call_static_method(
+                &class,
+                "filesDir",
+                "(Landroid/app/Activity;)Ljava/lang/String;",
+                &[JValue::Object(activity)],
+            )
             .ok()?
             .l()
             .ok()?;
@@ -45,18 +60,30 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         let bridge = with_activity(|env, activity| {
-            Some((|| {
-                let class = load_class(env, activity)?;
-                let obj = env.new_object(class, "(Landroid/app/Activity;)V", &[JValue::Object(activity)])?;
-                env.new_global_ref(obj)
-            })()
-            .map_err(|e| format!("could not start the player: {e}")))
+            Some(
+                (|| {
+                    let class = load_class(env, activity)?;
+                    let obj = env.new_object(
+                        class,
+                        "(Landroid/app/Activity;)V",
+                        &[JValue::Object(activity)],
+                    )?;
+                    env.new_global_ref(obj)
+                })()
+                .map_err(|e| format!("could not start the player: {e}")),
+            )
         })
         .unwrap_or_else(|| Err("no Android activity".into()));
         Player { bridge }
     }
 
-    fn call<T>(&self, method: &str, sig: &str, args: &[JValue], read: impl FnOnce(&mut JNIEnv, JValueOwned) -> Option<T>) -> Option<T> {
+    fn call<T>(
+        &self,
+        method: &str,
+        sig: &str,
+        args: &[JValue],
+        read: impl FnOnce(&mut JNIEnv, JValueOwned) -> Option<T>,
+    ) -> Option<T> {
         let bridge = self.bridge.as_ref().ok()?;
         with_activity(|env, _| {
             let value = env.call_method(bridge, method, sig, args).ok()?;
@@ -68,7 +95,14 @@ impl Player {
         let Ok(bridge) = &self.bridge else { return };
         with_activity(|env, _| {
             let url = JObject::from(env.new_string(url).ok()?);
-            env.call_method(bridge, "load", "(Ljava/lang/String;)V", &[JValue::Object(&url)]).ok().map(|_| ())
+            env.call_method(
+                bridge,
+                "load",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&url)],
+            )
+            .ok()
+            .map(|_| ())
         });
     }
 
@@ -85,15 +119,18 @@ impl Player {
     }
 
     pub fn position(&self) -> f64 {
-        self.call("position", "()D", &[], |_, v| v.d().ok()).unwrap_or(0.0)
+        self.call("position", "()D", &[], |_, v| v.d().ok())
+            .unwrap_or(0.0)
     }
 
     pub fn duration(&self) -> f64 {
-        self.call("duration", "()D", &[], |_, v| v.d().ok()).unwrap_or(0.0)
+        self.call("duration", "()D", &[], |_, v| v.d().ok())
+            .unwrap_or(0.0)
     }
 
     pub fn is_playing(&self) -> bool {
-        self.call("isPlaying", "()Z", &[], |_, v| v.z().ok()).unwrap_or(false)
+        self.call("isPlaying", "()Z", &[], |_, v| v.z().ok())
+            .unwrap_or(false)
     }
 
     pub fn error(&self) -> Option<String> {

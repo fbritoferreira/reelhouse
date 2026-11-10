@@ -45,7 +45,9 @@ fn key_path(key: &str) -> Option<std::path::PathBuf> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load(key: &str) -> Option<String> {
-    std::fs::read_to_string(key_path(key)?).ok().filter(|s| !s.is_empty())
+    std::fs::read_to_string(key_path(key)?)
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -64,7 +66,10 @@ pub fn set_server(base: &str) {
     save(SERVER_KEY, Some(&base));
     let mut s = use_session();
     let token = s.peek().client.token().map(str::to_owned);
-    s.set(Session { client: Client::new(base).with_token(token), user: None });
+    s.set(Session {
+        client: Client::new(base).with_token(token),
+        user: None,
+    });
 }
 
 pub fn needs_server() -> bool {

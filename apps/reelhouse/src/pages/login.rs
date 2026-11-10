@@ -9,7 +9,13 @@ use crate::widgets::describe;
 pub fn Login() -> Element {
     let mut name = use_signal(String::new);
     let mut password = use_signal(String::new);
-    let mut server = use_signal(|| if session::needs_server() { "http://".to_string() } else { String::new() });
+    let mut server = use_signal(|| {
+        if session::needs_server() {
+            "http://".to_string()
+        } else {
+            String::new()
+        }
+    });
     let mut error = use_signal(|| None::<String>);
     let ask_server = session::needs_server();
     let nav = navigator();
