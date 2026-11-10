@@ -69,6 +69,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/items/{id}/backdrop", get(libraries::backdrop))
         .route("/api/v1/items/{id}/playback", post(stream::playback))
         .route("/api/v1/items/{id}/file", get(stream::file))
+        .route("/api/v1/items/{id}/offline", post(stream::offline))
+        .route("/api/v1/items/{id}/mp4", get(stream::mp4))
         .route("/api/v1/hls/{session}/{name}", get(stream::hls_file))
         .route("/api/v1/items/{id}/progress", put(progress::put))
         .route("/api/v1/continue", get(progress::continue_watching))
@@ -106,6 +108,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/vod/search", get(crate::livetv::vod::search))
         .route("/api/v1/vod/{id}", get(crate::livetv::vod::title))
         .route("/api/v1/vod/{id}/file", get(crate::livetv::vod::file))
+        .route(
+            "/api/v1/vod/{id}/offline",
+            post(crate::livetv::vod::offline),
+        )
+        .route("/api/v1/vod/{id}/mp4", get(crate::livetv::vod::mp4))
         .route(
             "/api/v1/vod/{id}/progress",
             put(crate::livetv::vod::put_progress),

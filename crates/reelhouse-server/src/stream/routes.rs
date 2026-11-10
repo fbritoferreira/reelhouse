@@ -118,3 +118,104 @@ pub async fn hls_file(
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
+
+/// How a client should fetch a copy of `id` to keep: the file itself when it plays it as is,
+/// otherwise an MP4 made for it (see [`mp4`]).
+pub async fn offline(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(caps): Json<Capabilities>,
+) -> ApiResult<Json<reelhouse_api::OfflineSource>> {
+    let (_, info) = media(&state, id).await?;
+    Ok(Json(match decide(&info, &caps) {
+        PlaybackMethod::Direct => reelhouse_api::OfflineSource {
+            url: format!("/api/v1/items/{id}/file"),
+            resumable: true,
+        },
+        method => reelhouse_api::OfflineSource {
+            url: format!(
+                "/api/v1/items/{id}/mp4?transcode={}&height={}",
+                u8::from(method == PlaybackMethod::Transcode),
+                caps.max_height
+            ),
+            resumable: false,
+        },
+    }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct Mp4Query {
+    #[serde(default)]
+    transcode: u8,
+    height: Option<u32>,
+}
+
+/// The title as a fragmented MP4 made as it streams, for clients that keep copies offline but
+/// cannot play the original.
+pub async fn mp4(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+    Query(q): Query<Mp4Query>,
+) -> ApiResult<Response> {
+    let (path, _) = media(&state, id).await?;
+    mp4_response(&path, q.transcode == 1, q.height.unwrap_or(2160))
+}
+
+/// Runs ffmpeg to turn `input` into a fragmented MP4 on stdout and streams it; the process stops
+/// when the response is dropped.
+pub fn mp4_response(input: &str, transcode: bool, max_height: u32) -> ApiResult<Response> {
+    use futures::StreamExt;
+    use tokio::io::AsyncReadExt;
+    let mut cmd = tokio::process::Command::new("ffmpeg");
+    cmd.args([
+        "-v", "error", "-nostdin", "-i", input, "-map", "0:v:0", "-map", "0:a:0?",
+    ]);
+    if transcode {
+        let scale = format!("scale=-2:'min(ih,{max_height})'");
+        cmd.args([
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-vf",
+            &scale,
+        ]);
+    } else {
+        cmd.args(["-c:v", "copy"]);
+    }
+    cmd.args(["-c:a", "aac", "-ac", "2"])
+        .args([
+            "-movflags",
+            "frag_keyframe+empty_moov+default_base_moof",
+            "-f",
+            "mp4",
+            "pipe:1",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("starting ffmpeg: {e}")))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("ffmpeg has no output")))?;
+    // The child rides along with the stream, so dropping the response stops ffmpeg.
+    let body = futures::stream::unfold((child, stdout), |(child, mut out)| async move {
+        let mut buf = vec![0u8; 256 * 1024];
+        match out.read(&mut buf).await {
+            Ok(0) | Err(_) => None,
+            Ok(n) => {
+                buf.truncate(n);
+                Some((
+                    Ok::<_, std::io::Error>(axum::body::Bytes::from(buf)),
+                    (child, out),
+                ))
+            }
+        }
+    })
+    .boxed();
+    Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "video/mp4")
+        .body(Body::from_stream(body))
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))
+}

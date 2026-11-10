@@ -287,3 +287,41 @@ async fn films_and_shows_can_be_searched() {
     assert_eq!(found["films"][0]["title"], "Heat");
     assert_eq!(found["shows"], json!([]));
 }
+
+#[tokio::test]
+async fn an_on_demand_title_can_be_kept_as_mp4() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let film = dir.path().join("heat.mkv");
+    make_video(&film, 4);
+    let m3u = playlist(dir.path(), &film.to_string_lossy());
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    let id = films[0]["id"].as_i64().unwrap();
+    let caps = json!({"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "max_height": 1080});
+    let (status, plan) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/vod/{id}/offline"),
+        Some(&token),
+        Some(caps),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    assert_eq!(plan["resumable"], false);
+    let url = plan["url"].as_str().unwrap();
+    let (status, _, body) = super::stream::get(&app, &format!("{url}&token={token}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(&body[4..8], b"ftyp");
+}

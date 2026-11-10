@@ -333,6 +333,20 @@ impl Client {
         self.get("/api/v1/livetv/recordings").await
     }
 
+    /// Where to fetch a copy of `id` to keep offline; on-demand titles use their negated id.
+    pub async fn offline_source(
+        &self,
+        id: i64,
+        caps: &Capabilities,
+    ) -> Result<OfflineSource, ClientError> {
+        let path = if id < 0 {
+            format!("/api/v1/vod/{}/offline", -id)
+        } else {
+            format!("/api/v1/items/{id}/offline")
+        };
+        self.post(&path, caps).await
+    }
+
     pub async fn play_channel(&self, id: i64) -> Result<PlaybackPlan, ClientError> {
         self.post(&format!("/api/v1/livetv/channels/{id}/play"), &())
             .await

@@ -2,7 +2,6 @@ use dioxus::prelude::*;
 
 /// Everything downloaded to this device, playable without the server. Grouped by show, with
 /// anything still arriving first.
-#[cfg(not(target_arch = "wasm32"))]
 #[component]
 pub fn Downloads() -> Element {
     use crate::Route;
@@ -38,7 +37,7 @@ pub fn Downloads() -> Element {
         div { class: "page page-top",
             header { class: "page-head",
                 h1 { "Downloads" }
-                p { class: "quiet", "On this TV. They play without your server." }
+                p { class: "quiet", "Kept on this device. They play without your server." }
             }
             if groups.is_empty() {
                 p { class: "empty", "Nothing downloaded yet. Open a film, an episode or a show and choose Download." }
@@ -53,8 +52,9 @@ pub fn Downloads() -> Element {
                                     class: "wide",
                                     to: if d.item.id < 0 { Route::PlayVod { id: -d.item.id } } else { Route::Play { id: d.item.id } },
                                     div { class: "wide-art",
-                                        // On-demand titles bring a poster only.
-                                        img { src: if d.item.id < 0 { format!("/art/{}/poster", d.item.id) } else { format!("/art/{}/backdrop", d.item.id) }, alt: "" }
+                                        if let Some(src) = artwork(&d.item) {
+                                            img { src, alt: "" }
+                                        }
                                     }
                                     span { class: "poster-title",
                                         if d.item.show_title.is_some() { "{episode_name(&d.item)}" } else { "{d.item.title}" }
@@ -81,7 +81,6 @@ pub fn Downloads() -> Element {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn caption(d: &crate::downloads::Download, state: &crate::downloads::State) -> String {
     use crate::downloads::State;
     let code = match (d.item.season_no, d.item.episode_no) {
@@ -101,20 +100,23 @@ fn caption(d: &crate::downloads::Download, state: &crate::downloads::State) -> S
     format!("{code}{what}")
 }
 
-#[cfg(target_arch = "wasm32")]
-#[component]
-pub fn Downloads() -> Element {
-    rsx! {
-        div { class: "page page-top", p { class: "quiet", "Downloads are available in the TV and mobile apps." } }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn size(bytes: u64) -> String {
     let gb = bytes as f64 / 1_073_741_824.0;
     if gb >= 1.0 {
         format!("{gb:.1} GB")
     } else {
         format!("{:.0} MB", bytes as f64 / 1_048_576.0)
+    }
+}
+
+/// Kept artwork on the TV (served by the app itself); on the web, the server's.
+fn artwork(item: &reelhouse_api::Item) -> Option<String> {
+    if cfg!(target_arch = "wasm32") {
+        crate::widgets::art_url(item.backdrop_url.clone().or(item.poster_url.clone()))
+    } else if item.id < 0 {
+        // On-demand titles bring a poster only.
+        Some(format!("/art/{}/poster", item.id))
+    } else {
+        Some(format!("/art/{}/backdrop", item.id))
     }
 }

@@ -94,6 +94,10 @@ mod imp {
             let js = format!(
                 "(() => {{ const url = {url:?}; const v = document.getElementById({VIDEO_ID:?}); \
                  if (window.__hls) {{ window.__hls.destroy(); window.__hls = null; }} \
+                 if (url.startsWith('opfs:')) {{ navigator.storage.getDirectory() \
+                   .then(r => r.getFileHandle('dl-' + url.slice(5))).then(h => h.getFile()) \
+                   .then(f => {{ if (v.__rhBlob) URL.revokeObjectURL(v.__rhBlob); \
+                     v.__rhBlob = URL.createObjectURL(f); v.src = v.__rhBlob; v.play(); }}); return; }} \
                  if (!url.includes('.m3u8')) {{ v.src = url; return; }} \
                  const go = () => {{ \
                    if (window.Hls && Hls.isSupported()) {{ window.__hls = new Hls(); window.__hls.loadSource(url); window.__hls.attachMedia(v); }} \

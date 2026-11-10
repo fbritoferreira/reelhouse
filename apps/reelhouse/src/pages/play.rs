@@ -540,6 +540,9 @@ fn downloaded(id: i64) -> Option<(String, reelhouse_api::Item)> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn downloaded(_id: i64) -> Option<(String, reelhouse_api::Item)> {
-    None
+fn downloaded(id: i64) -> Option<(String, reelhouse_api::Item)> {
+    Some((
+        crate::downloads::local_url(id)?,
+        crate::downloads::item(id)?,
+    ))
 }
