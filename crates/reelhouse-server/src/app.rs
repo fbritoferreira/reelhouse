@@ -123,6 +123,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/livetv/rules/{id}", delete(livetv::delete_rule))
         .route("/api/v1/livetv/recordings", get(livetv::recordings))
+        .route(
+            "/api/v1/livetv/recordings/{id}",
+            delete(livetv::delete_recording),
+        )
         .route("/api/v1/import/plex", post(import::plex_import))
         .with_state(state);
     match web_dir {

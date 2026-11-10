@@ -8,6 +8,7 @@ mod link;
 mod live;
 mod login;
 mod play;
+mod recordings;
 mod search;
 mod vod;
 

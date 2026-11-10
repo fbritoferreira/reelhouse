@@ -859,3 +859,18 @@ button.secondary.current { background: var(--surface-raised); }
 .watched-toggle.on { background: var(--bulb); border-color: var(--bulb); color: var(--curtain-deep); }
 .episodes-head { display: flex; justify-content: flex-end; max-width: 72rem; margin-bottom: 0.5rem; }
 .tv .watched-toggle { width: 1.9rem; height: 1.9rem; }
+
+/* Recorded */
+.mode-option { font-size: var(--t-body); padding: 0.55em 0.7em; }
+.recordings h2 { margin: 1.25rem 0 0.6rem; }
+.rec-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-width: 52rem; }
+.rec-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; padding: 0.55rem 0.8rem; border-radius: var(--radius); }
+.rec-row:hover { background: rgba(239, 230, 220, 0.05); }
+.rec-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-play { display: flex; align-items: center; gap: 0.7rem; min-width: 0; grid-column: 1 / 3; }
+.rec-play .play-icon { color: var(--bulb); }
+.rec-dot.live { box-shadow: 0 0 10px rgba(226, 81, 58, 0.8); }
+@media (prefers-reduced-motion: no-preference) {
+  .rec-dot.live { animation: lamp 1.6s ease-in-out infinite; }
+}
+.tv .mode-option { font-size: 0.8125rem; }

@@ -92,7 +92,7 @@ pub fn VodBrowser() -> Element {
         div { class: "page page-top live",
             div { class: "live-body",
                 aside { class: "live-groups",
-                    ModeToggle { on_demand: true }
+                    ModeToggle { current: super::live::Mode::OnDemand }
                     div { class: "live-sort", role: "radiogroup", "aria-label": "Films or series",
                         for (k, label) in [(Kind::Movies, "Films"), (Kind::Series, "Series")] {
                             button {
