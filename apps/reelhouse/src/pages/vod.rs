@@ -2,7 +2,7 @@
 //! them. Groups down the left (gathered by country), posters on the right, drawn a page at a time.
 
 use dioxus::prelude::*;
-use reelhouse_api::{VodEpisode, VodGroup, VodMovie, VodShow as Show};
+use reelhouse_api::{Progress, VodEpisode, VodGroup, VodMovie, VodShow as Show, VodTitle};
 
 use super::live::{ModeToggle, families_of, split_prefix};
 use crate::Route;
@@ -10,6 +10,18 @@ use crate::session::client;
 use crate::widgets::{LoadError, describe};
 
 const KIND_KEY: &str = "reelhouse.vod.kind";
+/// The group key standing for "Continue watching" (no real group can start with a NUL).
+const CONTINUE: &str = "\u{0}continue";
+
+/// How far into a title, for its progress bar; nothing once finished or before the length is known.
+fn watched(progress: &Option<Progress>, duration: Option<f64>) -> Option<f64> {
+    match (progress, duration) {
+        (Some(p), Some(d)) if !p.played && d > 0.0 && p.position_s > 0.0 => {
+            Some((p.position_s / d).clamp(0.0, 1.0))
+        }
+        _ => None,
+    }
+}
 /// Posters drawn at a time.
 const PAGE: usize = 48;
 
@@ -47,6 +59,8 @@ static PLACE: GlobalSignal<VodPlace> = Signal::global(VodPlace::default);
 pub fn VodBrowser() -> Element {
     let mut kind = use_signal(Kind::saved);
     let groups = use_resource(move || async move { client().vod_groups(kind().id()).await });
+    let started = use_resource(|| async move { client().vod_continue().await.unwrap_or_default() });
+    let started: Vec<VodTitle> = started.read().clone().unwrap_or_default();
     let list: Vec<VodGroup> = match &*groups.read() {
         Some(Ok(g)) => g.clone(),
         Some(Err(e)) => {
@@ -59,7 +73,9 @@ pub fn VodBrowser() -> Element {
         .read()
         .group
         .clone()
-        .filter(|g| list.iter().any(|l| key(&l.name) == *g))
+        .filter(|g| {
+            list.iter().any(|l| key(&l.name) == *g) || (g == CONTINUE && !started.is_empty())
+        })
         .or_else(|| list.first().map(|g| key(&g.name)));
     let choose = |k: String| {
         let mut p = PLACE.write();
@@ -99,6 +115,15 @@ pub fn VodBrowser() -> Element {
                         }
                     }
                     nav { class: "live-group-list", "aria-label": "Groups",
+                        if !started.is_empty() {
+                            button {
+                                class: if selected.as_deref() == Some(CONTINUE) { "live-group continue current" } else { "live-group continue" },
+                                "aria-current": selected.as_deref() == Some(CONTINUE),
+                                onclick: move |_| choose(CONTINUE.to_string()),
+                                span { class: "live-group-name", "Continue watching" }
+                                span { class: "live-group-count", "{started.len()}" }
+                            }
+                        }
                         for fam in families_of(&pairs) {
                             if let Some(country) = fam.name.clone() {
                                 p { key: "{country}", class: "live-family-label", "{country}" }
@@ -129,7 +154,25 @@ pub fn VodBrowser() -> Element {
                     }
                 }
                 section { class: "live-main",
-                    if let Some(g) = selected.clone() {
+                    if selected.as_deref() == Some(CONTINUE) {
+                        header { class: "live-main-head", h2 { "Continue watching" } }
+                        div { class: "grid vod-grid",
+                            for t in started.clone() {
+                                VodPoster {
+                                    key: "{t.id}",
+                                    to: Route::PlayVod { id: t.id },
+                                    title: t.show_title.clone().unwrap_or(t.title.clone()),
+                                    caption: match (t.show_title.is_some(), t.season_no, t.episode_no) {
+                                        (true, Some(s), Some(e)) => format!("S{s} E{e}  {}", t.title),
+                                        _ => String::new(),
+                                    },
+                                    poster: t.poster_url.clone(),
+                                    near_end: false,
+                                    fraction: watched(&t.progress, t.duration_s),
+                                }
+                            }
+                        }
+                    } else if let Some(g) = selected.clone() {
                         {
                             let (country, short) = match split_prefix(&g) {
                                 Some((c, s)) => (Some(c.to_string()), s.to_string()),
@@ -201,6 +244,7 @@ fn Films(group: String) -> Element {
                     caption: f.year.map(|y| y.to_string()).unwrap_or_default(),
                     poster: f.poster_url.clone(),
                     near_end: i + 8 >= limit,
+                    fraction: watched(&f.progress, f.duration_s),
                 }
             }
         }
@@ -228,6 +272,7 @@ fn Shows(group: String) -> Element {
                     caption: if s.seasons > 1 { format!("{} seasons", s.seasons) } else if s.episodes == 1 { "1 episode".into() } else { format!("{} episodes", s.episodes) },
                     poster: s.poster_url.clone(),
                     near_end: i + 8 >= limit,
+                    fraction: None,
                 }
             }
         }
@@ -241,6 +286,7 @@ fn VodPoster(
     caption: String,
     poster: Option<String>,
     near_end: bool,
+    fraction: Option<f64>,
 ) -> Element {
     rsx! {
         // Link takes no focus handler; the wrapper hears its focus.
@@ -253,6 +299,11 @@ fn VodPoster(
                     img { src: url, alt: "", loading: "lazy", decoding: "async" }
                 } else {
                     span { class: "poster-fallback", "{initials(&title)}" }
+                }
+                if let Some(f) = fraction {
+                    span { class: "progress-track",
+                        span { class: "progress-fill", style: "width: {f * 100.0}%" }
+                    }
                 }
             }
             span { class: "poster-title", "{title}" }
@@ -322,6 +373,13 @@ pub fn VodShow(title: String) -> Element {
                                 Link { class: "vod-episode", to: Route::PlayVod { id: e.id },
                                     span { class: "episode-number", "{e.episode_no.map(|n| n.to_string()).unwrap_or_default()}" }
                                     span { class: "episode-name", "{e.title}" }
+                                    if let Some(f) = watched(&e.progress, e.duration_s) {
+                                        span { class: "progress-track vod-episode-progress",
+                                            span { class: "progress-fill", style: "width: {f * 100.0}%" }
+                                        }
+                                    } else if e.progress.as_ref().is_some_and(|p| p.played) {
+                                        span { class: "watched-inline", "aria-label": "Watched", "✓" }
+                                    }
                                     span { class: "play-icon", "aria-hidden": "true" }
                                 }
                             }

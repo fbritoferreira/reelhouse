@@ -740,3 +740,6 @@ button.secondary.current { background: var(--surface-raised); }
   .guide-row { grid-template-columns: 7rem minmax(0, 1fr); }
   .guide-detail { grid-template-columns: 1fr; }
 }
+.live-group.continue { color: var(--text); font-weight: 600; margin-bottom: 0.4rem; }
+.vod-episode { grid-template-columns: 2.4em minmax(0, 1fr) auto auto; }
+.vod-episode-progress { position: static; width: 5rem; }

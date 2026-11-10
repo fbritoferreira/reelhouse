@@ -100,6 +100,15 @@ pub fn router(state: AppState) -> Router {
             post(crate::livetv::vod::playback),
         )
         .route(
+            "/api/v1/vod/continue",
+            get(crate::livetv::vod::continue_watching),
+        )
+        .route("/api/v1/vod/{id}", get(crate::livetv::vod::title))
+        .route(
+            "/api/v1/vod/{id}/progress",
+            put(crate::livetv::vod::put_progress),
+        )
+        .route(
             "/api/v1/livetv/rules",
             get(livetv::rules).post(livetv::create_rule),
         )

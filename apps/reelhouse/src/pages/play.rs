@@ -26,6 +26,19 @@ pub fn PlayVod(id: i64) -> Element {
     rsx! { PlayerScreen { id, on_demand: true } }
 }
 
+/// Saves where playback is; failures are left for the next report.
+async fn save_progress(c: &reelhouse_core::Client, id: i64, on_demand: bool, position_s: f64) {
+    let p = Progress {
+        position_s,
+        played: false,
+    };
+    let _ = if on_demand {
+        c.put_vod_progress(id, &p).await
+    } else {
+        c.put_progress(id, &p).await
+    };
+}
+
 /// How to play `id` from `start_s` seconds in.
 async fn plan_for(
     c: &reelhouse_core::Client,
@@ -66,7 +79,16 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             // The server knows the latest position; a downloaded copy plays without it. On-demand
             // titles keep no position yet.
             let (mut known, resume_at) = if on_demand {
-                (0.0, 0.0)
+                match c.vod_title(id).await {
+                    Ok(t) => (
+                        t.duration_s.unwrap_or(0.0),
+                        t.progress
+                            .filter(|p| !p.played)
+                            .map(|p| p.position_s)
+                            .unwrap_or(0.0),
+                    ),
+                    Err(_) => (0.0, 0.0),
+                }
             } else {
                 let item = match (c.item(id).await, &local) {
                     (Ok(i), _) => i,
@@ -118,16 +140,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     error.set(Some(e));
                 }
                 ticks += 1;
-                if !on_demand && ticks % REPORT_EVERY == 0 && p.is_playing() {
-                    let _ = c
-                        .put_progress(
-                            id,
-                            &Progress {
-                                position_s: offset() + p.position(),
-                                played: false,
-                            },
-                        )
-                        .await;
+                if ticks % REPORT_EVERY == 0 && p.is_playing() {
+                    save_progress(&c, id, on_demand, offset() + p.position()).await;
                 }
             }
         }
@@ -138,21 +152,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
         move || {
             let pos = offset() + p.position();
             p.pause();
-            if on_demand {
-                nav.go_back();
-                return;
-            }
-            spawn(async move {
-                let _ = client()
-                    .put_progress(
-                        id,
-                        &Progress {
-                            position_s: pos,
-                            played: false,
-                        },
-                    )
-                    .await;
-            });
+            spawn(async move { save_progress(&client(), id, on_demand, pos).await });
             nav.go_back();
         }
     };

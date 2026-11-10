@@ -164,3 +164,65 @@ async fn a_film_plays_through_hls() {
     .await;
     assert_eq!(status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn progress_is_kept_and_listed_and_survives_a_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), "http://example.invalid/movie/u/p/1.mp4");
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    let heat = films[0]["id"].as_i64().unwrap();
+
+    let (status, _) = call(
+        &app,
+        "PUT",
+        &format!("/api/v1/vod/{heat}/progress"),
+        Some(&token),
+        Some(json!({"position_s": 1234.0, "played": false})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, title) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/vod/{heat}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(title["title"], "Heat");
+    assert_eq!(title["progress"]["position_s"], 1234.0);
+    let (_, cont) = call(&app, "GET", "/api/v1/vod/continue", Some(&token), None).await;
+    assert_eq!(cont[0]["id"], heat);
+
+    // Refreshing the same playlist keeps the title, and so its progress.
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&token), None).await;
+    let (status, _) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(films[0]["id"], heat);
+    assert_eq!(films[0]["progress"]["position_s"], 1234.0);
+}
