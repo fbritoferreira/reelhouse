@@ -141,6 +141,14 @@ pub enum TvSourceKind {
     Xtream,
 }
 
+/// A text subtitle track in a title, served as WebVTT. `index` counts the file's subtitle streams.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SubtitleTrack {
+    pub index: i64,
+    pub language: Option<String>,
+    pub title: Option<String>,
+}
+
 /// Where to fetch a copy to keep offline: the original file when the client plays it as is
 /// (`resumable`, ranges allowed), else an MP4 remuxed as it streams (restart if interrupted).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

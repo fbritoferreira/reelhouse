@@ -142,6 +142,9 @@ impl Player {
         self.select(&t.kind, t.group, t.index);
     }
 
+    /// ExoPlayer reads a file's own subtitles; nothing to attach.
+    pub fn set_subtitles(&self, _tracks: &[(String, String, String)]) {}
+
     pub fn subtitles_off(&self) {
         self.select("text", -1, -1);
     }

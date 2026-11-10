@@ -219,3 +219,63 @@ pub fn mp4_response(input: &str, transcode: bool, max_height: u32) -> ApiResult<
         .body(Body::from_stream(body))
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))
 }
+
+/// The title's text subtitle tracks.
+pub async fn subtitles(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<Vec<reelhouse_api::SubtitleTrack>>> {
+    let (path, _) = media(&state, id).await?;
+    let tracks = crate::scan::probe::text_subtitles(&path)
+        .await
+        .unwrap_or_default();
+    Ok(Json(
+        tracks
+            .into_iter()
+            .map(|(index, language, title)| reelhouse_api::SubtitleTrack {
+                index,
+                language,
+                title,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(serde::Deserialize)]
+pub struct SubtitleQuery {
+    /// Where the player's stream begins; cues move to its clock.
+    start: Option<f64>,
+}
+
+/// One subtitle track as WebVTT, converted on request.
+pub async fn subtitle(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path((id, index)): Path<(i64, u32)>,
+    Query(q): Query<SubtitleQuery>,
+) -> ApiResult<Response> {
+    let (path, _) = media(&state, id).await?;
+    let start = q.start.filter(|s| s.is_finite() && *s > 0.0).unwrap_or(0.0);
+    // Cue times stay as the file has them (-copyts), less where the player's stream begins, so
+    // they line up with its clock; cues before that point are dropped.
+    let mut cmd = tokio::process::Command::new("ffmpeg");
+    cmd.args(["-v", "error", "-nostdin", "-copyts", "-i", &path])
+        .args(["-map", &format!("0:s:{index}")]);
+    if start > 0.0 {
+        cmd.args(["-ss", &format!("{start:.3}")])
+            .args(["-output_ts_offset", &format!("-{start:.3}")]);
+    }
+    let out = cmd
+        .args(["-f", "webvtt", "pipe:1"])
+        .output()
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("running ffmpeg: {e}")))?;
+    if !out.status.success() {
+        return Err(ApiError::NotFound);
+    }
+    Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "text/vtt; charset=utf-8")
+        .body(Body::from(out.stdout))
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("{e}")))
+}
