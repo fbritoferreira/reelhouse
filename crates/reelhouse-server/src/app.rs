@@ -35,7 +35,7 @@ impl AppState {
     }
 }
 
-pub const FEATURES: &[&str] = &["libraries", "users", "hls", "plex_import"];
+pub const FEATURES: &[&str] = &["libraries", "users", "hls", "plex_import", "livetv", "dvr"];
 
 pub fn router(state: AppState) -> Router {
     let web_dir = state.config.web_dir.clone();
