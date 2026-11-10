@@ -63,7 +63,8 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         let text = fetch_text(&src.url)
             .await
             .with_context(|| format!("reading {}", src.url))?;
-        (m3u::parse(&text), src.epg_url)
+        let epg = src.epg_url.or_else(|| m3u::epg_url(&text));
+        (m3u::parse(&text), epg)
     };
     let guide = match &epg_url {
         Some(url) => xmltv::parse(

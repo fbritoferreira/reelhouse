@@ -152,6 +152,37 @@ impl Client {
         self.get(&format!("/api/v1/items/{id}/children")).await
     }
 
+    pub async fn tv_sources(&self) -> Result<Vec<TvSource>, ClientError> {
+        self.get("/api/v1/livetv/sources").await
+    }
+
+    pub async fn create_tv_source(&self, source: &NewTvSource) -> Result<TvSource, ClientError> {
+        self.post("/api/v1/livetv/sources", source).await
+    }
+
+    pub async fn refresh_tv_source(&self, id: i64) -> Result<RefreshReport, ClientError> {
+        self.post(&format!("/api/v1/livetv/sources/{id}/refresh"), &())
+            .await
+    }
+
+    pub async fn channel_groups(&self) -> Result<Vec<ChannelGroup>, ClientError> {
+        self.get("/api/v1/livetv/groups").await
+    }
+
+    /// One group's channels with what is on for the next few hours; `""` asks for the ungrouped.
+    pub async fn guide(&self, group: &str) -> Result<Vec<GuideChannel>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/livetv/guide")
+                .query(&[("group", group)]),
+        )
+        .await
+    }
+
+    pub async fn play_channel(&self, id: i64) -> Result<PlaybackPlan, ClientError> {
+        self.post(&format!("/api/v1/livetv/channels/{id}/play"), &())
+            .await
+    }
+
     pub async fn continue_watching(&self) -> Result<Vec<Item>, ClientError> {
         self.get("/api/v1/continue").await
     }

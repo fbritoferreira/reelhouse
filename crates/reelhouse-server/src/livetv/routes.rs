@@ -4,8 +4,9 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use reelhouse_api::{
-    Channel, GuideChannel, NewRecordingRule, NewTvSource, PlaybackMethod, PlaybackPlan, Programme,
-    Recording, RecordingRule, RefreshReport, RuleKind, TvSource, TvSourceKind,
+    Channel, ChannelGroup, GuideChannel, NewRecordingRule, NewTvSource, PlaybackMethod,
+    PlaybackPlan, Programme, Recording, RecordingRule, RefreshReport, RuleKind, TvSource,
+    TvSourceKind,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
@@ -138,11 +139,15 @@ impl From<ChannelRow> for Channel {
     }
 }
 
-async fn all_channels(state: &AppState) -> ApiResult<Vec<Channel>> {
-    let rows: Vec<ChannelRow> = sqlx::query_as(
+/// Matches channels in group `?1`: every channel when it is NULL, the ungrouped when it is ''.
+const IN_GROUP: &str = "(?1 IS NULL OR group_title = ?1 OR (?1 = '' AND group_title IS NULL))";
+
+async fn all_channels(state: &AppState, group: Option<&str>) -> ApiResult<Vec<Channel>> {
+    let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
         "SELECT id, source_id, number, name, logo_url, group_title FROM channels \
-         ORDER BY number IS NULL, number, name",
-    )
+         WHERE {IN_GROUP} ORDER BY number IS NULL, number, name"
+    ))
+    .bind(group)
     .fetch_all(&state.db)
     .await?;
     Ok(rows.into_iter().map(Channel::from).collect())
@@ -152,13 +157,32 @@ pub async fn channels(
     State(state): State<AppState>,
     _user: CurrentUser,
 ) -> ApiResult<Json<Vec<Channel>>> {
-    Ok(Json(all_channels(&state).await?))
+    Ok(Json(all_channels(&state, None).await?))
+}
+
+/// Channel groups in playlist order (by their first channel), the ungrouped last.
+pub async fn groups(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+) -> ApiResult<Json<Vec<ChannelGroup>>> {
+    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT group_title, COUNT(*) FROM channels GROUP BY group_title \
+         ORDER BY group_title IS NULL, MIN(number), group_title",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(name, channels)| ChannelGroup { name, channels })
+            .collect(),
+    ))
 }
 
 #[derive(Deserialize)]
 pub struct Window {
     start: Option<i64>,
     end: Option<i64>,
+    group: Option<String>,
 }
 
 #[derive(FromRow)]
@@ -172,7 +196,8 @@ struct ProgrammeRow {
     description: Option<String>,
 }
 
-/// Every channel with the programmes that overlap `[start, end)`; defaults to the next 3 hours.
+/// Every channel (or one group's) with the programmes that overlap `[start, end)`; defaults to
+/// the next 3 hours.
 pub async fn guide(
     State(state): State<AppState>,
     _user: CurrentUser,
@@ -180,15 +205,18 @@ pub async fn guide(
 ) -> ApiResult<Json<Vec<GuideChannel>>> {
     let start = w.start.unwrap_or_else(now);
     let end = w.end.unwrap_or(start + 3 * 3600);
-    let rows: Vec<ProgrammeRow> = sqlx::query_as(
+    let group = w.group.as_deref();
+    let rows: Vec<ProgrammeRow> = sqlx::query_as(&format!(
         "SELECT id, channel_id, start, stop, title, subtitle, description FROM programmes \
-         WHERE stop > ? AND start < ? ORDER BY start",
-    )
+         WHERE stop > ?2 AND start < ?3 \
+         AND channel_id IN (SELECT id FROM channels WHERE {IN_GROUP}) ORDER BY start"
+    ))
+    .bind(group)
     .bind(start)
     .bind(end)
     .fetch_all(&state.db)
     .await?;
-    let mut out: Vec<GuideChannel> = all_channels(&state)
+    let mut out: Vec<GuideChannel> = all_channels(&state, group)
         .await?
         .into_iter()
         .map(|channel| GuideChannel {

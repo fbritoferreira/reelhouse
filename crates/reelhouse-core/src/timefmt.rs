@@ -18,9 +18,42 @@ pub fn seek_fraction(fraction: f64, duration: f64) -> f64 {
     fraction.clamp(0.0, 1.0) * duration
 }
 
+/// "20:30" for a Unix time. `offset_min` is JavaScript's `getTimezoneOffset()`: minutes to add to
+/// local time to reach UTC, so UTC+4 is -240.
+pub fn clock(unix_s: i64, offset_min: i64) -> String {
+    let local = (unix_s - offset_min * 60).rem_euclid(86_400);
+    format!("{:02}:{:02}", local / 3600, local / 60 % 60)
+}
+
+/// "32 min left" or "1h 35m left" until `stop`, never less than a minute.
+pub fn left(now: i64, stop: i64) -> String {
+    let minutes = ((stop - now).max(0) + 59) / 60;
+    let minutes = minutes.max(1);
+    if minutes < 60 {
+        format!("{minutes} min left")
+    } else {
+        format!("{}h {}m left", minutes / 60, minutes % 60)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clock_applies_the_local_offset() {
+        // 2026-11-10 20:30 UTC; JavaScript reports UTC+4 as an offset of -240 minutes.
+        assert_eq!(clock(1_794_342_600, -240), "00:30");
+        assert_eq!(clock(1_794_342_600, 0), "20:30");
+        assert_eq!(clock(1_794_342_600, 60), "19:30");
+    }
+
+    #[test]
+    fn left_reads_in_minutes_or_hours() {
+        assert_eq!(left(1000, 1000 + 32 * 60), "32 min left");
+        assert_eq!(left(1000, 1000 + 95 * 60), "1h 35m left");
+        assert_eq!(left(1000, 1030), "1 min left");
+    }
 
     #[test]
     fn formats_hours() {
