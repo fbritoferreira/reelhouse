@@ -701,3 +701,42 @@ button.secondary.current { background: var(--surface-raised); }
 @media (prefers-reduced-motion: no-preference) {
   .job.running .job-dot { animation: lamp 1.6s ease-in-out infinite; }
 }
+
+/* ---- Guide ---------------------------------------------------------------------------------
+   Channels down, time across. Programmes are blocks sized to their length; the amber line is
+   now; a recording carries a red dot. */
+.view-switch { margin-left: auto; }
+.guide { display: flex; flex-direction: column; gap: 3px; }
+.guide-row { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 3px; min-height: 3.1rem; }
+.guide-times { min-height: 1.6rem; position: sticky; top: 0; z-index: 3; background: var(--curtain); }
+.guide-channel {
+  display: flex; align-items: center; gap: 0.6rem; padding: 0 0.8rem; border-radius: 8px;
+  background: var(--surface); min-width: 0;
+}
+.guide-times .guide-channel { background: transparent; }
+.guide-channel-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guide-track { position: relative; min-width: 0; overflow: hidden; border-radius: 8px; }
+.guide-tick { position: absolute; top: 0.2rem; font-size: var(--t-small); color: var(--muted); padding-left: 0.4rem; border-left: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.guide-now { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--bulb); box-shadow: 0 0 8px var(--bulb-glow); z-index: 2; pointer-events: none; }
+.guide-prog {
+  position: absolute; top: 0; bottom: 0; justify-content: flex-start; gap: 0.4rem;
+  padding: 0 0.7rem; border-radius: 6px; background: var(--surface); color: var(--text);
+  font-weight: 500; font-size: var(--t-small); white-space: nowrap; overflow: hidden;
+  border: 1px solid var(--curtain);
+}
+.guide-prog.now { background: var(--surface-raised); }
+.guide-prog:hover { background: #3f2d45; }
+.guide-prog-title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.guide-empty { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 0.8rem; color: var(--muted); font-size: var(--t-small); background: rgba(42, 29, 44, 0.5); border-radius: 6px; }
+.rec-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #e2513a; flex: none; }
+.guide-prog.rec { box-shadow: inset 0 0 0 1px rgba(226, 81, 58, 0.6); }
+.guide-detail { grid-template-columns: minmax(0, 1fr) auto; }
+.guide-actions { display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch; }
+.rec-on { color: #f0a090; }
+.tv .guide-row { grid-template-columns: 9.5rem minmax(0, 1fr); min-height: 2.4rem; }
+.tv .guide-prog { font-size: 0.75rem; }
+.tv .guide-channel { padding: 0 0.5rem; font-size: 0.8rem; }
+@media (max-width: 760px) {
+  .guide-row { grid-template-columns: 7rem minmax(0, 1fr); }
+  .guide-detail { grid-template-columns: 1fr; }
+}

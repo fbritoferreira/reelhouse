@@ -271,6 +271,42 @@ impl Client {
         .await
     }
 
+    /// One group's channels with every programme overlapping `[start, end)` (Unix seconds).
+    pub async fn guide_window(
+        &self,
+        group: &str,
+        start: i64,
+        end: i64,
+    ) -> Result<Vec<GuideChannel>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/livetv/guide")
+                .query(&[
+                    ("group", group.to_string()),
+                    ("start", start.to_string()),
+                    ("end", end.to_string()),
+                ]),
+        )
+        .await
+    }
+
+    /// Records one programme, or every episode of its series.
+    pub async fn create_rule(&self, rule: &NewRecordingRule) -> Result<RecordingRule, ClientError> {
+        self.post("/api/v1/livetv/rules", rule).await
+    }
+
+    pub async fn delete_rule(&self, id: i64) -> Result<(), ClientError> {
+        self.send_empty(self.req(
+            reqwest::Method::DELETE,
+            &format!("/api/v1/livetv/rules/{id}"),
+        ))
+        .await
+    }
+
+    /// Recordings scheduled, under way and done.
+    pub async fn recordings(&self) -> Result<Vec<Recording>, ClientError> {
+        self.get("/api/v1/livetv/recordings").await
+    }
+
     pub async fn play_channel(&self, id: i64) -> Result<PlaybackPlan, ClientError> {
         self.post(&format!("/api/v1/livetv/channels/{id}/play"), &())
             .await
