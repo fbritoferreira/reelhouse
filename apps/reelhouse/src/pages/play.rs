@@ -11,6 +11,8 @@ use crate::widgets::describe;
 
 const SKIP_SECONDS: f64 = 10.0;
 const REPORT_EVERY: u32 = 40; // polls of 250 ms = 10 s
+/// Controls fade out after this many quiet polls of 250 ms while playing (3 s).
+const HIDE_AFTER: u32 = 12;
 
 #[component]
 pub fn Play(id: i64) -> Element {
@@ -19,6 +21,10 @@ pub fn Play(id: i64) -> Element {
     let mut position = use_signal(|| 0.0);
     let mut duration = use_signal(|| 0.0);
     let mut playing = use_signal(|| false);
+    // Polls since the last key press; controls show while this is low or while paused.
+    let mut quiet = use_signal(|| 0u32);
+    // Back hides the controls at once, without the fade.
+    let mut instant = use_signal(|| false);
     let nav = navigator();
 
     let p = player.clone();
@@ -51,6 +57,9 @@ pub fn Play(id: i64) -> Element {
                 position.set(p.position());
                 duration.set(p.duration().max(known));
                 playing.set(p.is_playing());
+                if p.is_playing() {
+                    quiet += 1;
+                }
                 if let Some(e) = p.error() {
                     error.set(Some(e));
                 }
@@ -89,10 +98,18 @@ pub fn Play(id: i64) -> Element {
             nav.go_back();
         }
     };
-    // The remote's Back saves the position and returns, like the on-screen Back.
+    let controls_shown = move || !playing() || quiet() < HIDE_AFTER || error().is_some();
+    // The remote's Back first hides the controls; with them hidden it saves and returns.
     crate::tv::use_back({
         let leave = save_and_leave.clone();
-        move || leave()
+        move || {
+            if controls_shown() && playing() {
+                instant.set(true);
+                quiet.set(HIDE_AFTER);
+            } else {
+                leave()
+            }
+        }
     });
     let skip = {
         let p = player.clone();
@@ -106,17 +123,29 @@ pub fn Play(id: i64) -> Element {
     let on_key = {
         let skip = skip.clone();
         let leave = save_and_leave.clone();
-        move |e: KeyboardEvent| match e.key() {
-            Key::ArrowLeft => {
-                e.prevent_default();
-                skip(-SKIP_SECONDS);
+        move |e: KeyboardEvent| {
+            if e.key() == Key::Escape || e.key() == Key::GoBack || e.key() == Key::BrowserBack {
+                return leave();
             }
-            Key::ArrowRight => {
+            // With the controls hidden, the first press only brings them back.
+            let was_hidden = !controls_shown();
+            quiet.set(0);
+            instant.set(false);
+            if was_hidden {
                 e.prevent_default();
-                skip(SKIP_SECONDS);
+                return;
             }
-            Key::Escape | Key::GoBack | Key::BrowserBack => leave(),
-            _ => {}
+            match e.key() {
+                Key::ArrowLeft => {
+                    e.prevent_default();
+                    skip(-SKIP_SECONDS);
+                }
+                Key::ArrowRight => {
+                    e.prevent_default();
+                    skip(SKIP_SECONDS);
+                }
+                _ => {}
+            }
         }
     };
     let toggle = {
@@ -139,7 +168,11 @@ pub fn Play(id: i64) -> Element {
     let leave = save_and_leave.clone();
 
     rsx! {
-        div { class: "player", onkeydown: on_key,
+        div {
+            class: if controls_shown() { "player" } else if instant() { "player idle instant" } else { "player idle" },
+            "data-rh-seek": "true",
+            onkeydown: on_key,
+            onmousemove: move |_| quiet.set(0),
             {crate::player::surface()}
             div { class: "player-top",
                 button { onclick: move |_| leave(), "Back" }
