@@ -87,6 +87,10 @@ async fn scans_movies() {
     assert_eq!(items[0]["title"], "Blade Runner");
     assert_eq!(items[0]["year"], 1982);
     assert!((items[0]["duration_s"].as_f64().unwrap() - 1.0).abs() < 0.2);
+    assert_eq!(
+        items[0]["height"], 240,
+        "the picture's height, for a resolution badge"
+    );
 }
 
 #[tokio::test]
@@ -129,6 +133,9 @@ async fn scans_tv_into_show_season_episode() {
     )
     .await;
     assert_eq!(seasons[0]["season_no"], 2);
+    // A show and a season take their best episode's resolution.
+    assert_eq!(shows[0]["height"], 240);
+    assert_eq!(seasons[0]["height"], 240);
     let season = seasons[0]["id"].as_i64().unwrap();
     let (_, eps) = call(
         &app,

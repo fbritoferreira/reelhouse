@@ -64,6 +64,19 @@ pub fn episode_name(item: &Item) -> String {
     }
 }
 
+/// "4K", "1080p", "720p" or "SD" for a picture `height` pixels tall. Widescreen films are
+/// letterboxed short (a 2.39:1 film is 1600 tall in 4K, 800 in 1080p), so each step starts at its
+/// most letterboxed height, which stays above the full height of the step below.
+pub fn quality(height: Option<i64>) -> Option<&'static str> {
+    Some(match height? {
+        h if h >= 1500 => "4K",
+        h if h >= 780 => "1080p",
+        h if h >= 520 => "720p",
+        h if h > 0 => "SD",
+        _ => return None,
+    })
+}
+
 /// Facts shown under a title, in reading order.
 pub fn facts(item: &Item) -> Vec<String> {
     let mut out = Vec::new();
@@ -96,6 +109,9 @@ pub fn Facts(item: Item) -> Element {
         p { class: "facts",
             for fact in facts(&item) {
                 span { "{fact}" }
+            }
+            if let Some(q) = quality(item.height) {
+                span { class: "quality", "{q}" }
             }
         }
     }
@@ -137,6 +153,9 @@ pub fn Poster(item: Item) -> Element {
                 }
                 if let Some(f) = watched_fraction(&item) {
                     Progress { fraction: f }
+                }
+                if let Some(q) = quality(item.height).filter(|q| *q == "4K") {
+                    span { class: "quality corner", "{q}" }
                 }
                 Peek { item: item.clone() }
             }
@@ -296,6 +315,26 @@ mod tests {
         assert_eq!(runtime(2700.0), "45m");
         assert_eq!(runtime(7200.0), "2h");
         assert_eq!(runtime(20.0), "1m");
+    }
+
+    #[test]
+    fn quality_steps() {
+        // Heights found in a real library, letterboxed ones included.
+        for (h, q) in [
+            (2160, "4K"),
+            (2072, "4K"),
+            (1606, "4K"),
+            (1080, "1080p"),
+            (960, "1080p"),
+            (816, "1080p"),
+            (800, "1080p"),
+            (720, "720p"),
+            (718, "720p"),
+            (480, "SD"),
+        ] {
+            assert_eq!(quality(Some(h)), Some(q), "{h}");
+        }
+        assert_eq!(quality(None), None);
     }
 
     #[test]

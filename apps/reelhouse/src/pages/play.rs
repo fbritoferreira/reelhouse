@@ -82,6 +82,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     let mut heading = use_signal(|| None::<(String, String)>);
     // The episode after this one, offered as the credits roll.
     let mut up_next = use_signal(|| None::<(Route, String)>);
+    // The title's resolution, shown beside what is playing.
+    let mut badge = use_signal(|| None::<&'static str>);
     let nav = navigator();
 
     let p = player.clone();
@@ -141,6 +143,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     .filter(|pr| !pr.played)
                     .map(|pr| pr.position_s)
                     .unwrap_or(0.0);
+                badge.set(crate::widgets::quality(item.height));
                 heading.set(Some(
                     match (&item.show_title, item.season_no, item.episode_no) {
                         (Some(show), Some(s), Some(e)) => (
@@ -379,8 +382,12 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 if let Some((title, sub)) = heading() {
                     div { class: "player-heading",
                         p { class: "player-title", "{title}" }
-                        if !sub.is_empty() {
-                            p { class: "player-sub", "{sub}" }
+                        if !sub.is_empty() || badge().is_some() {
+                            p { class: "player-sub", "{sub}"
+                                if let Some(q) = badge() {
+                                    span { class: "quality", "{q}" }
+                                }
+                            }
                         }
                     }
                 }

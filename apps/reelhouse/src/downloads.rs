@@ -440,6 +440,7 @@ mod tests {
             progress: None,
             show_id: None,
             show_title: None,
+            height: None,
         }
     }
 

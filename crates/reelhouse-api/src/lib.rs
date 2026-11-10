@@ -85,6 +85,9 @@ pub struct Item {
     pub show_id: Option<i64>,
     #[serde(default)]
     pub show_title: Option<String>,
+    /// The picture's height in pixels, for films and episodes (1080, 2160).
+    #[serde(default)]
+    pub height: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
