@@ -33,6 +33,45 @@ pub struct LiveMemory {
     /// Where you were; not written to disk.
     #[serde(skip)]
     pub place: Place,
+    /// Channels watched on this device, most recent first.
+    #[serde(default)]
+    pub recent: Vec<RecentChannel>,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecentChannel {
+    pub id: i64,
+    pub name: String,
+    pub number: Option<i64>,
+    pub logo_url: Option<String>,
+    /// The group it was watched from, so changing channel stays within it.
+    pub group: String,
+}
+
+/// Channels kept in the recent list.
+const RECENT_KEPT: usize = 12;
+
+/// Puts a channel at the head of the recent list.
+pub fn remember_channel(channel: &reelhouse_api::Channel, group: &str) {
+    {
+        let mut live = LIVE.write();
+        if live.recent.first().is_some_and(|r| r.id == channel.id) {
+            return;
+        }
+        live.recent.retain(|r| r.id != channel.id);
+        live.recent.insert(
+            0,
+            RecentChannel {
+                id: channel.id,
+                name: channel.name.clone(),
+                number: channel.number,
+                logo_url: channel.logo_url.clone(),
+                group: group.to_string(),
+            },
+        );
+        live.recent.truncate(RECENT_KEPT);
+    }
+    persist();
 }
 
 #[derive(Clone, Default, PartialEq)]

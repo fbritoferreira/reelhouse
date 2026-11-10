@@ -753,6 +753,14 @@ fn Tuned(id: i64, group: String) -> Element {
 
     let channels = guide.read().clone().unwrap_or_default();
     let at = channels.iter().position(|c| c.channel.id == id);
+    // Once the channel is known, it heads the recent list (Home shows it).
+    let watched = at.map(|i| channels[i].channel.clone());
+    let from = group.clone();
+    use_effect(use_reactive!(|watched| {
+        if let Some(ch) = &watched {
+            crate::live_cache::remember_channel(ch, &from);
+        }
+    }));
     let zap = {
         let channels = channels.clone();
         let p = player.clone();
@@ -804,6 +812,7 @@ fn Tuned(id: i64, group: String) -> Element {
     };
 
     let entry = at.map(|i| channels[i].clone());
+
     let (current, next) = entry
         .as_ref()
         .map(|e| now_next(&e.programmes, time().now))
