@@ -133,6 +133,9 @@ async fn scans_tv_into_show_season_episode() {
     )
     .await;
     assert_eq!(seasons[0]["season_no"], 2);
+    // A show and a season take their best episode's resolution.
+    assert_eq!(shows[0]["height"], 240);
+    assert_eq!(seasons[0]["height"], 240);
     let season = seasons[0]["id"].as_i64().unwrap();
     let (_, eps) = call(
         &app,

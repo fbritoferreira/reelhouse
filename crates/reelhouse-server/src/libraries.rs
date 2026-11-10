@@ -199,7 +199,10 @@ pub const ITEM_SELECT: &str = "SELECT i.id, i.kind, i.parent_id, i.title, i.year
      EXISTS (SELECT 1 FROM images WHERE item_id = i.id AND kind = 'backdrop') AS has_backdrop, \
      CASE i.kind WHEN 'season' THEN par.id WHEN 'episode' THEN gp.id END AS show_id, \
      CASE i.kind WHEN 'season' THEN par.title WHEN 'episode' THEN gp.title END AS show_title, \
-     i.height \
+     CASE i.kind \
+       WHEN 'show' THEN (SELECT MAX(e.height) FROM items se JOIN items e ON e.parent_id = se.id WHERE se.parent_id = i.id) \
+       WHEN 'season' THEN (SELECT MAX(e.height) FROM items e WHERE e.parent_id = i.id) \
+       ELSE i.height END AS height \
      FROM items i LEFT JOIN progress p ON p.item_id = i.id AND p.user_id = ? \
      LEFT JOIN items par ON par.id = i.parent_id LEFT JOIN items gp ON gp.id = par.parent_id";
 
