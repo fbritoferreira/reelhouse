@@ -65,7 +65,7 @@ fn file_stem(path: &Path) -> &str {
 }
 
 /// Finds `(YYYY)`; returns the year and the byte offset of `(`.
-fn year_of(s: &str) -> Option<(u16, usize)> {
+pub(crate) fn year_of(s: &str) -> Option<(u16, usize)> {
     let b = s.as_bytes();
     (0..b.len().saturating_sub(5)).find_map(|i| {
         let digits = s.get(i + 1..i + 5)?;
@@ -79,6 +79,11 @@ fn year_of(s: &str) -> Option<(u16, usize)> {
 
 /// Case-insensitive `SxxEyy`.
 fn season_episode(s: &str) -> Option<(u16, u16)> {
+    season_episode_at(s).map(|(season, episode, _)| (season, episode))
+}
+
+/// `SxxEyy` with the byte range it occupies.
+pub(crate) fn season_episode_at(s: &str) -> Option<(u16, u16, std::ops::Range<usize>)> {
     let lower = s.to_ascii_lowercase();
     let b = lower.as_bytes();
     (0..b.len()).find_map(|i| {
@@ -97,12 +102,13 @@ fn season_episode(s: &str) -> Option<(u16, u16)> {
         Some((
             lower[i + 1..e].parse().ok()?,
             lower[e + 1..e + 1 + episode_len].parse().ok()?,
+            i..e + 1 + episode_len,
         ))
     })
 }
 
 /// Drops `{...}` and `[...]` tags and trims separators.
-fn clean(s: &str) -> String {
+pub(crate) fn clean(s: &str) -> String {
     let mut out = String::new();
     let mut depth = 0;
     for c in s.chars() {

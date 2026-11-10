@@ -125,6 +125,10 @@ pub struct PlaybackPlan {
     /// its own clock then counts from here. Direct play always starts at 0 and seeks itself.
     #[serde(default)]
     pub start_s: f64,
+    /// The whole title's length when the server knows it (a live conversion only reports what
+    /// it has converted so far).
+    #[serde(default)]
+    pub duration_s: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +165,9 @@ pub struct NewTvSource {
 pub struct RefreshReport {
     pub channels: u64,
     pub programmes: u64,
+    /// Films and series episodes the source offers on demand.
+    #[serde(default)]
+    pub on_demand: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -190,6 +197,38 @@ pub struct Programme {
 pub struct ChannelGroup {
     pub name: Option<String>,
     pub channels: i64,
+}
+
+/// A group of on-demand titles, with how many films or shows it holds.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VodGroup {
+    pub name: Option<String>,
+    pub titles: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VodMovie {
+    pub id: i64,
+    pub title: String,
+    pub year: Option<i64>,
+    pub poster_url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VodShow {
+    pub title: String,
+    pub poster_url: Option<String>,
+    pub seasons: i64,
+    pub episodes: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VodEpisode {
+    pub id: i64,
+    pub title: String,
+    pub season_no: Option<i64>,
+    pub episode_no: Option<i64>,
+    pub poster_url: Option<String>,
 }
 
 /// One of a source's groups, and whether Live TV shows it.

@@ -8,6 +8,7 @@ mod live;
 mod login;
 mod play;
 mod search;
+mod vod;
 
 pub use admin::Admin;
 pub use downloads::Downloads;
@@ -17,5 +18,6 @@ pub use library::LibraryPage;
 pub use link::LinkDevice;
 pub use live::{LiveTv, Watch};
 pub use login::{Login, Setup};
-pub use play::Play;
+pub use play::{Play, PlayVod};
 pub use search::Search;
+pub use vod::VodShow;

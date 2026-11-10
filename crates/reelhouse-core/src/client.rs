@@ -217,6 +217,53 @@ impl Client {
         .await
     }
 
+    /// Groups of on-demand films (`"movies"`) or shows (`"series"`).
+    pub async fn vod_groups(&self, kind: &str) -> Result<Vec<VodGroup>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/vod/groups")
+                .query(&[("kind", kind)]),
+        )
+        .await
+    }
+
+    pub async fn vod_movies(&self, group: &str) -> Result<Vec<VodMovie>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/vod/movies")
+                .query(&[("group", group)]),
+        )
+        .await
+    }
+
+    pub async fn vod_series(&self, group: &str) -> Result<Vec<VodShow>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/vod/series")
+                .query(&[("group", group)]),
+        )
+        .await
+    }
+
+    pub async fn vod_episodes(&self, show: &str) -> Result<Vec<VodEpisode>, ClientError> {
+        self.send(
+            self.req(reqwest::Method::GET, "/api/v1/vod/episodes")
+                .query(&[("show", show)]),
+        )
+        .await
+    }
+
+    /// How to play an on-demand title, starting `start_s` seconds in.
+    pub async fn vod_playback(
+        &self,
+        id: i64,
+        caps: &Capabilities,
+        start_s: f64,
+    ) -> Result<PlaybackPlan, ClientError> {
+        self.post(
+            &format!("/api/v1/vod/{id}/playback?start={start_s:.3}"),
+            caps,
+        )
+        .await
+    }
+
     pub async fn play_channel(&self, id: i64) -> Result<PlaybackPlan, ClientError> {
         self.post(&format!("/api/v1/livetv/channels/{id}/play"), &())
             .await

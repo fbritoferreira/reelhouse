@@ -114,7 +114,7 @@ struct Family {
 }
 
 /// Splits `Germany - RTL+` into `("Germany", "RTL+")`.
-fn split_prefix(name: &str) -> Option<(&str, &str)> {
+pub(crate) fn split_prefix(name: &str) -> Option<(&str, &str)> {
     [" - ", " | ", ": "].iter().find_map(|sep| {
         let (head, tail) = name.split_once(sep)?;
         (!head.trim().is_empty() && !tail.trim().is_empty()).then(|| (head.trim(), tail.trim()))
@@ -152,12 +152,82 @@ fn families(groups: &[ChannelGroup]) -> Vec<Family> {
     out
 }
 
+/// A family of `(name, count)` groups for any list (channel groups, on-demand groups).
+pub(crate) struct Fam {
+    pub name: Option<String>,
+    /// Each group's name, count and the label shown inside the family.
+    pub members: Vec<(Option<String>, i64, String)>,
+}
+
+pub(crate) fn families_of(groups: &[(Option<String>, i64)]) -> Vec<Fam> {
+    let as_groups: Vec<ChannelGroup> = groups
+        .iter()
+        .map(|(name, channels)| ChannelGroup {
+            name: name.clone(),
+            channels: *channels,
+        })
+        .collect();
+    families(&as_groups)
+        .into_iter()
+        .map(|f| Fam {
+            name: f.name,
+            members: f
+                .groups
+                .into_iter()
+                .map(|(g, label)| (g.name, g.channels, label))
+                .collect(),
+        })
+        .collect()
+}
+
+const MODE_KEY: &str = "reelhouse.live.mode";
+
+/// Whether Live TV shows channels or what its sources offer on demand; remembered on the device.
+static ON_DEMAND: GlobalSignal<bool> =
+    Signal::global(|| crate::session::load(MODE_KEY).as_deref() == Some("vod"));
+
+/// Live or On demand, at the head of the groups column.
+#[component]
+pub(crate) fn ModeToggle(on_demand: bool) -> Element {
+    let set = |vod: bool| {
+        *ON_DEMAND.write() = vod;
+        crate::session::save(MODE_KEY, Some(if vod { "vod" } else { "live" }));
+    };
+    rsx! {
+        div { class: "mode-toggle", role: "radiogroup", "aria-label": "Live or on demand",
+            button {
+                role: "radio",
+                class: if on_demand { "mode-option" } else { "mode-option current" },
+                "aria-checked": !on_demand,
+                onclick: move |_| set(false),
+                span { class: "lamp", "aria-hidden": "true" }
+                "Live"
+            }
+            button {
+                role: "radio",
+                class: if on_demand { "mode-option current" } else { "mode-option" },
+                "aria-checked": on_demand,
+                onclick: move |_| set(true),
+                "On demand"
+            }
+        }
+    }
+}
+
 fn group_label(name: &Option<String>) -> String {
     name.clone().unwrap_or_else(|| "Other channels".into())
 }
 
 #[component]
 pub fn LiveTv() -> Element {
+    if ON_DEMAND() {
+        return rsx! { super::vod::VodBrowser {} };
+    }
+    rsx! { LiveChannels {} }
+}
+
+#[component]
+fn LiveChannels() -> Element {
     // Groups come from the cache at once; a stale or missing list is fetched behind it.
     let mut failed = use_signal(|| None::<String>);
     use_future(move || async move {
@@ -230,7 +300,7 @@ pub fn LiveTv() -> Element {
         div { class: "page page-top live",
             div { class: "live-body",
                 aside { class: "live-groups",
-                    h1 { class: "live-title", "Live TV" }
+                    ModeToggle { on_demand: false }
                     div { class: "live-sort", role: "radiogroup", "aria-label": "Sort groups",
                         for by in GroupSort::ALL {
                             button {
@@ -372,7 +442,7 @@ fn LiveSkeleton() -> Element {
         div { class: "page page-top live", "aria-busy": "true",
             div { class: "live-body",
                 aside { class: "live-groups",
-                    h1 { class: "live-title", "Live TV" }
+                    ModeToggle { on_demand: false }
                     for i in 0..9 {
                         span { key: "{i}", class: "skeleton skeleton-line" }
                     }

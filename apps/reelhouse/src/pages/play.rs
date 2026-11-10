@@ -14,8 +14,34 @@ const REPORT_EVERY: u32 = 40; // polls of 250 ms = 10 s
 /// Controls fade out after this many quiet polls of 250 ms while playing (3 s).
 const HIDE_AFTER: u32 = 12;
 
+/// A library title.
 #[component]
 pub fn Play(id: i64) -> Element {
+    rsx! { PlayerScreen { id, on_demand: false } }
+}
+
+/// A film or episode a Live TV source offers on demand.
+#[component]
+pub fn PlayVod(id: i64) -> Element {
+    rsx! { PlayerScreen { id, on_demand: true } }
+}
+
+/// How to play `id` from `start_s` seconds in.
+async fn plan_for(
+    c: &reelhouse_core::Client,
+    id: i64,
+    on_demand: bool,
+    start_s: f64,
+) -> Result<reelhouse_api::PlaybackPlan, reelhouse_core::ClientError> {
+    if on_demand {
+        c.vod_playback(id, &capabilities(), start_s).await
+    } else {
+        c.playback(id, &capabilities(), start_s).await
+    }
+}
+
+#[component]
+fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     let player = use_hook(|| Rc::new(Player::new()));
     let mut error = use_signal(|| None::<String>);
     let mut position = use_signal(|| 0.0);
@@ -36,20 +62,26 @@ pub fn Play(id: i64) -> Element {
         let p = p.clone();
         async move {
             let c = client();
-            let local = downloaded(id);
-            // The server knows the latest position; a downloaded copy plays without it.
-            let item = match (c.item(id).await, &local) {
-                (Ok(i), _) => i,
-                (Err(_), Some((_, saved))) => saved.clone(),
-                (Err(e), None) => return error.set(Some(describe(&e))),
+            let local = if on_demand { None } else { downloaded(id) };
+            // The server knows the latest position; a downloaded copy plays without it. On-demand
+            // titles keep no position yet.
+            let (mut known, resume_at) = if on_demand {
+                (0.0, 0.0)
+            } else {
+                let item = match (c.item(id).await, &local) {
+                    (Ok(i), _) => i,
+                    (Err(_), Some((_, saved))) => saved.clone(),
+                    (Err(e), None) => return error.set(Some(describe(&e))),
+                };
+                // A live-converted HLS stream only reports what is converted so far; the scan knows
+                // the full length.
+                let resume = item
+                    .progress
+                    .filter(|pr| !pr.played)
+                    .map(|pr| pr.position_s)
+                    .unwrap_or(0.0);
+                (item.duration_s.unwrap_or(0.0), resume)
             };
-            // A live-converted HLS stream only reports what is converted so far; the scan knows the full length.
-            let known = item.duration_s.unwrap_or(0.0);
-            let resume_at = item
-                .progress
-                .filter(|pr| !pr.played)
-                .map(|pr| pr.position_s)
-                .unwrap_or(0.0);
             match &local {
                 Some((file, _)) => {
                     p.load(file);
@@ -57,10 +89,13 @@ pub fn Play(id: i64) -> Element {
                 }
                 None => {
                     // A conversion starts where we resume; a direct file seeks there itself.
-                    let plan = match c.playback(id, &capabilities(), resume_at).await {
+                    let plan = match plan_for(&c, id, on_demand, resume_at).await {
                         Ok(plan) => plan,
                         Err(e) => return error.set(Some(describe(&e))),
                     };
+                    if let Some(d) = plan.duration_s {
+                        known = known.max(d);
+                    }
                     converting.set(plan.method != reelhouse_api::PlaybackMethod::Direct);
                     offset.set(plan.start_s);
                     p.load(&c.media_url(&plan.url));
@@ -83,7 +118,7 @@ pub fn Play(id: i64) -> Element {
                     error.set(Some(e));
                 }
                 ticks += 1;
-                if ticks % REPORT_EVERY == 0 && p.is_playing() {
+                if !on_demand && ticks % REPORT_EVERY == 0 && p.is_playing() {
                     let _ = c
                         .put_progress(
                             id,
@@ -103,6 +138,10 @@ pub fn Play(id: i64) -> Element {
         move || {
             let pos = offset() + p.position();
             p.pause();
+            if on_demand {
+                nav.go_back();
+                return;
+            }
             spawn(async move {
                 let _ = client()
                     .put_progress(
@@ -143,7 +182,7 @@ pub fn Play(id: i64) -> Element {
             position.set(target);
             spawn(async move {
                 let c = client();
-                match c.playback(id, &capabilities(), target).await {
+                match plan_for(&c, id, on_demand, target).await {
                     Ok(plan) => {
                         offset.set(plan.start_s);
                         p.load(&c.media_url(&plan.url));

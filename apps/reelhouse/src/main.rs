@@ -14,8 +14,8 @@ mod widgets;
 
 use dioxus::prelude::*;
 use pages::{
-    Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, LiveTv, Login, Play, Search, Setup,
-    Watch,
+    Admin, Downloads, Home, ItemPage, LibraryPage, LinkDevice, LiveTv, Login, Play, PlayVod,
+    Search, Setup, VodShow, Watch,
 };
 
 const STYLE: Asset = asset!("/assets/main.css");
@@ -40,6 +40,8 @@ pub enum Route {
         LiveTv {},
         #[route("/search")]
         Search {},
+        #[route("/vod/show?:title")]
+        VodShow { title: String },
     #[end_layout]
     #[route("/login")]
     Login {},
@@ -47,6 +49,8 @@ pub enum Route {
     Setup {},
     #[route("/play/:id")]
     Play { id: i64 },
+    #[route("/vod/play/:id")]
+    PlayVod { id: i64 },
     #[route("/watch/:id?:group")]
     Watch { id: i64, group: String },
 }
