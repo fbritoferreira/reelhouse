@@ -9,12 +9,19 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.FrameLayout
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.SubtitleView
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * ExoPlayer drawn in a SurfaceView under the transparent Dioxus WebView (proven in Phase 0).
@@ -31,6 +38,8 @@ class PlayerBridge(private val activity: Activity) {
     @Volatile private var durationS = 0.0
     @Volatile private var playing = false
     @Volatile private var lastError: String? = null
+    /** The audio and subtitle tracks, as JSON, refreshed whenever they change. */
+    @Volatile private var tracksJson = "[]"
 
     init {
         main.post { attach() }
@@ -47,12 +56,23 @@ class PlayerBridge(private val activity: Activity) {
         frame.setBackgroundColor(Color.BLACK)
         val surface = SurfaceView(activity)
         frame.addView(surface, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Subtitles draw over the picture, under the WebView's controls.
+        val subtitles = SubtitleView(activity)
+        subtitles.setUserDefaultStyle()
+        subtitles.setUserDefaultTextSize()
+        frame.addView(subtitles, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         parent.addView(frame, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val exo = ExoPlayer.Builder(activity).build()
         exo.setVideoSurfaceView(surface)
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 lastError = "${error.errorCodeName}: ${error.message}"
+            }
+            override fun onTracksChanged(tracks: Tracks) {
+                tracksJson = describe(tracks)
+            }
+            override fun onCues(cues: CueGroup) {
+                subtitles.setCues(cues.cues)
             }
             override fun onVideoSizeChanged(size: VideoSize) {
                 if (size.height > 0) frame.setAspectRatio(size.width * size.pixelWidthHeightRatio / size.height)
@@ -94,6 +114,50 @@ class PlayerBridge(private val activity: Activity) {
     fun duration(): Double = durationS
     fun isPlaying(): Boolean = playing
     fun error(): String? = lastError
+    fun tracks(): String = tracksJson
+
+    /** Picks track `index` of group `group` for audio or text; a negative group turns text off. */
+    fun selectTrack(kind: String, group: Int, index: Int) {
+        main.post {
+            val exo = player ?: return@post
+            val type = if (kind == "audio") C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT
+            val params = exo.trackSelectionParameters.buildUpon()
+            if (group < 0) {
+                params.setTrackTypeDisabled(type, true)
+            } else {
+                val g = exo.currentTracks.groups.getOrNull(group) ?: return@post
+                params.setTrackTypeDisabled(type, false)
+                    .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, index))
+            }
+            exo.trackSelectionParameters = params.build()
+        }
+    }
+
+    private fun describe(tracks: Tracks): String {
+        val out = JSONArray()
+        tracks.groups.forEachIndexed { g, group ->
+            val kind = when (group.type) {
+                C.TRACK_TYPE_AUDIO -> "audio"
+                C.TRACK_TYPE_TEXT -> "text"
+                else -> return@forEachIndexed
+            }
+            for (i in 0 until group.length) {
+                if (!group.isTrackSupported(i)) continue
+                val f = group.getTrackFormat(i)
+                out.put(
+                    JSONObject()
+                        .put("kind", kind)
+                        .put("group", g)
+                        .put("index", i)
+                        .put("label", f.label ?: "")
+                        .put("language", f.language ?: "")
+                        .put("channels", f.channelCount)
+                        .put("selected", group.isTrackSelected(i)),
+                )
+            }
+        }
+        return out.toString()
+    }
 
     /** Stops playback and removes the video layer when the player screen closes. */
     fun release() {

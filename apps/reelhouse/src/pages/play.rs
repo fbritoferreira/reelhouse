@@ -245,12 +245,35 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             nav.go_back();
         }
     };
-    let controls_shown = move || !playing() || quiet() < HIDE_AFTER || error().is_some();
+    // The audio and subtitle picker, and what it offers (read from the player while open).
+    let mut picking = use_signal(|| false);
+    let mut tracks = use_signal(Vec::<crate::player::Track>::new);
+    {
+        let p = player.clone();
+        use_future(move || {
+            let p = p.clone();
+            async move {
+                loop {
+                    futures_timer::Delay::new(Duration::from_millis(500)).await;
+                    if picking() {
+                        let now = p.tracks();
+                        if *tracks.peek() != now {
+                            tracks.set(now);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    let controls_shown =
+        move || picking() || !playing() || quiet() < HIDE_AFTER || error().is_some();
     // The remote's Back first hides the controls; with them hidden it saves and returns.
     crate::tv::use_back({
         let leave = save_and_leave.clone();
         move || {
-            if controls_shown() && playing() {
+            if picking() {
+                picking.set(false);
+            } else if controls_shown() && playing() {
                 instant.set(true);
                 quiet.set(HIDE_AFTER);
             } else {
@@ -399,6 +422,95 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     }
                     button { class: "player-skip", "aria-label": "Forward 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(SKIP_SECONDS) },
                         "+10"
+                    }
+                    if cfg!(target_os = "android") {
+                        button {
+                            class: if picking() { "player-tracks current" } else { "player-tracks" },
+                            "aria-expanded": picking(),
+                            onclick: {
+                                let p = player.clone();
+                                move |_| {
+                                    tracks.set(p.tracks());
+                                    picking.toggle();
+                                }
+                            },
+                            "Audio & subtitles"
+                        }
+                    }
+                }
+                if picking() {
+                    TrackPicker {
+                        tracks: tracks(),
+                        on_pick: {
+                            let p = player.clone();
+                            move |choice: Option<crate::player::Track>| match choice {
+                                Some(t) => p.select_track(&t),
+                                None => p.subtitles_off(),
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Audio and subtitle choices for the playing title.
+#[component]
+/// `on_pick` gets the chosen track, or `None` for subtitles off.
+fn TrackPicker(
+    tracks: Vec<crate::player::Track>,
+    on_pick: EventHandler<Option<crate::player::Track>>,
+) -> Element {
+    let audio: Vec<_> = tracks
+        .iter()
+        .filter(|t| t.kind == "audio")
+        .cloned()
+        .collect();
+    let text: Vec<_> = tracks
+        .iter()
+        .filter(|t| t.kind == "text")
+        .cloned()
+        .collect();
+    let subtitles_on = text.iter().any(|t| t.selected);
+    rsx! {
+        div { class: "track-picker",
+            section {
+                h3 { "Audio" }
+                if audio.is_empty() {
+                    p { class: "quiet", "One soundtrack." }
+                }
+                for t in audio {
+                    button {
+                        key: "a{t.group}-{t.index}",
+                        class: if t.selected { "track current" } else { "track" },
+                        "aria-pressed": t.selected,
+                        onclick: {
+                            let t = t.clone();
+                            move |_| on_pick.call(Some(t.clone()))
+                        },
+                        "{t.name()}"
+                    }
+                }
+            }
+            section {
+                h3 { "Subtitles" }
+                button {
+                    class: if subtitles_on { "track" } else { "track current" },
+                    "aria-pressed": !subtitles_on,
+                    onclick: move |_| on_pick.call(None),
+                    "Off"
+                }
+                for t in text {
+                    button {
+                        key: "t{t.group}-{t.index}",
+                        class: if t.selected { "track current" } else { "track" },
+                        "aria-pressed": t.selected,
+                        onclick: {
+                            let t = t.clone();
+                            move |_| on_pick.call(Some(t.clone()))
+                        },
+                        "{t.name()}"
                     }
                 }
             }
