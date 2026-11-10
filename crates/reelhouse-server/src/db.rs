@@ -40,4 +40,21 @@ mod tests {
             .unwrap();
         assert_eq!(n, 0);
     }
+
+    #[tokio::test]
+    async fn livetv_tables_exist() {
+        let pool = super::open_memory().await.unwrap();
+        for t in [
+            "tv_sources",
+            "channels",
+            "programmes",
+            "recording_rules",
+            "recordings",
+        ] {
+            sqlx::query(&format!("SELECT count(*) FROM {t}"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        }
+    }
 }
