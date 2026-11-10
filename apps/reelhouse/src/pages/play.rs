@@ -586,30 +586,32 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                     button { class: "player-skip", "aria-label": "Forward 10 seconds", onclick: { let mut skip = skip.clone(); move |_| skip(SKIP_SECONDS) },
                         "+10"
                     }
-                    if cfg!(target_os = "android")
-                        || tracks().iter().any(|t| t.kind == "text")
-                        || tracks().iter().filter(|t| t.kind == "audio").count() > 1
-                    {
-                        button {
-                            class: if picking() { "player-tracks current" } else { "player-tracks" },
-                            "aria-expanded": picking(),
-                            onclick: {
-                                let p = player.clone();
-                                move |_| {
-                                    tracks.set(p.tracks());
-                                    picking.toggle();
-                                }
-                            },
-                            "Audio & subtitles"
+                    div { class: "player-end",
+                        if cfg!(target_os = "android")
+                            || tracks().iter().any(|t| t.kind == "text")
+                            || tracks().iter().filter(|t| t.kind == "audio").count() > 1
+                        {
+                            button {
+                                class: if picking() { "player-tracks current" } else { "player-tracks" },
+                                "aria-expanded": picking(),
+                                onclick: {
+                                    let p = player.clone();
+                                    move |_| {
+                                        tracks.set(p.tracks());
+                                        picking.toggle();
+                                    }
+                                },
+                                "Audio & subtitles"
+                            }
                         }
-                    }
-                    if cfg!(target_arch = "wasm32") {
-                        button {
-                            class: "player-tracks",
-                            "aria-label": if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" },
-                            title: "Full screen (F)",
-                            onclick: move |_| crate::player::toggle_fullscreen(),
-                            if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" }
+                        if cfg!(target_arch = "wasm32") {
+                            button {
+                                class: "player-tracks",
+                                "aria-label": if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" },
+                                title: "Full screen (F)",
+                                onclick: move |_| crate::player::toggle_fullscreen(),
+                                if crate::player::is_fullscreen() { "Exit full screen" } else { "Full screen" }
+                            }
                         }
                     }
                 }
