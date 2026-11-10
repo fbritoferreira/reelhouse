@@ -114,10 +114,46 @@ button.link { background: none; padding: 0; color: var(--muted); }
 }
 .brand { font-family: var(--display); font-weight: 700; font-size: 1.5rem; letter-spacing: -0.02em; }
 .brand.big { font-size: clamp(2.75rem, 7vw, 4.75rem); }
-.bar-links { display: flex; gap: clamp(0.75rem, 2vw, 1.75rem); flex: 1; }
-.nav-link { color: var(--muted); padding: 0.25rem 0; border-bottom: 2px solid transparent; }
-.nav-link.current { color: var(--text); border-bottom-color: var(--bulb); }
-.user-chip { background: none; padding: 0.25rem; gap: 0.6rem; color: var(--muted); font-weight: 500; }
+/* One rounded track of destinations; where you are is a filled amber pill. Search and the
+   profile sit either side as round buttons of the same height. */
+.bar { gap: 0.75rem; }
+.brand { margin-right: clamp(0.5rem, 2vw, 1.75rem); }
+.bar-pills {
+  display: flex; align-items: center; gap: 0.15rem; padding: 0.25rem;
+  border-radius: 999px; background: rgba(53, 37, 58, 0.72);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  overflow-x: auto; scrollbar-width: none; min-width: 0;
+}
+.bar-pills::-webkit-scrollbar { display: none; }
+.pill {
+  flex: none; padding: 0.45em 1.1em; border-radius: 999px; color: var(--text);
+  font-weight: 600; white-space: nowrap; transition: background 160ms ease, color 160ms ease;
+}
+.pill:hover { background: rgba(239, 230, 220, 0.08); }
+.pill.current { background: var(--bulb); color: var(--curtain-deep); }
+.bar-round {
+  flex: none; width: 2.6rem; height: 2.6rem; padding: 0; border-radius: 50%;
+  display: inline-grid; place-items: center; color: var(--text);
+  background: rgba(53, 37, 58, 0.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  font-weight: 700;
+}
+.bar-round svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.bar-round.current { background: var(--bulb); color: var(--curtain-deep); }
+.profile { position: relative; margin-left: auto; }
+.profile-menu {
+  position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 13rem; z-index: 20;
+  display: flex; flex-direction: column; padding: 0.4rem; border-radius: calc(var(--radius) + 4px);
+  background: var(--surface-raised); box-shadow: 0 18px 40px rgba(10, 5, 12, 0.55);
+}
+.profile-menu > a, .profile-menu > button {
+  justify-content: flex-start; padding: 0.6rem 0.8rem; border-radius: 8px; background: transparent; font-weight: 500;
+}
+.profile-menu > a:hover, .profile-menu > button:hover { background: rgba(239, 230, 220, 0.08); }
+.profile-name { margin: 0; padding: 0.5rem 0.8rem 0.6rem; color: var(--muted); font-size: var(--t-small); border-bottom: 1px solid var(--line); margin-bottom: 0.3rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .profile-menu { animation: menu-in 160ms ease-out; transform-origin: top right; }
+}
+@keyframes menu-in { from { opacity: 0; transform: scale(0.96) translateY(-4px); } }
 .avatar {
   width: 2rem;
   height: 2rem;
@@ -371,8 +407,7 @@ html:has(.video.native), html:has(.video.native) body { background: transparent;
 }
 
 @media (max-width: 640px) {
-  .bar-links .nav-link:not(.current) { display: none; }
-  .user-chip-text { display: none; }
+  .brand { display: none; }
   .hero-body { max-width: 100%; }
   .episode { grid-template-columns: 1fr; }
 }
@@ -392,6 +427,8 @@ html.tv {
   --radius: 8px;
 }
 .tv .bar { padding: 18px var(--gutter); }
+.tv .bar-round { width: 2.1rem; height: 2.1rem; }
+.tv .pill { font-size: 0.8125rem; padding: 0.4em 0.95em; }
 .tv .brand { font-size: 1.1rem; }
 .tv .avatar { width: 1.6rem; height: 1.6rem; font-size: 0.75rem; }
 .tv .hero { min-height: 70vh; padding: 3.5rem var(--gutter) 1.25rem; }
@@ -472,34 +509,70 @@ html.tv {
 .tv .reel-icon { font-size: 0.95rem; padding: 0.4em; }
 
 /* ---- Live TV ------------------------------------------------------------------------------
-   Groups down the left, the chosen group's channels beside them: what is on now with how far
-   it has run, and what follows. */
+   Groups down the left, gathered by country; beside them the focused channel large ("on air")
+   above the group's channels. A marquee lamp, not a red badge, says a channel is live. */
 
-.live-body { display: grid; grid-template-columns: minmax(12rem, 18rem) 1fr; gap: clamp(1rem, 2.5vw, 2.5rem); align-items: start; }
-.live-groups {
-  display: flex; flex-direction: column; gap: 2px;
-  position: sticky; top: 5rem; max-height: calc(100vh - 7rem); overflow-y: auto; padding: 4px;
+.live-body { display: grid; grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr); gap: clamp(1rem, 3vw, 3rem); align-items: start; }
+.live-groups { position: sticky; top: 5.5rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: calc(100vh - 7rem); min-height: 0; }
+.live-title { font-size: var(--t-h1); }
+.live-sort { display: flex; gap: 0.2rem; padding: 0.2rem; border-radius: 999px; background: var(--surface); }
+.live-sort-option { flex: 1; background: transparent; color: var(--muted); font-size: var(--t-small); font-weight: 600; padding: 0.35em 0.8em; }
+.live-sort-option.current { background: var(--surface-raised); color: var(--text); }
+.live-group-list { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; min-height: 0; padding: 4px; margin: -4px; scrollbar-width: thin; }
+.live-group, .live-family-head {
+  justify-content: flex-start; gap: 0.6rem; border-radius: 8px; background: transparent; color: var(--muted);
+  font-weight: 500; padding: 0.5em 0.8em; white-space: nowrap; text-align: left; width: 100%;
 }
-.live-group {
-  justify-content: space-between; border-radius: 8px; background: transparent; color: var(--muted);
-  font-weight: 500; padding: 0.55em 0.9em; white-space: normal; text-align: left;
-}
+.live-group:hover, .live-family-head:hover { color: var(--text); background: rgba(239, 230, 220, 0.05); }
+.live-group.nested { padding-left: 2.1em; font-size: var(--t-small); }
 .live-group.current { background: var(--surface-raised); color: var(--text); }
 .live-group.current .live-group-count { color: var(--bulb); }
-.live-group-count { font-variant-numeric: tabular-nums; font-size: var(--t-small); }
+.live-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.live-group-count { font-variant-numeric: tabular-nums; font-size: var(--t-small); color: var(--muted); }
+.live-family-head { color: var(--text); font-weight: 600; }
+.live-family-chevron { width: 0.45em; height: 0.45em; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform 160ms ease; flex: none; margin-right: 0.15em; }
+.live-family.open .live-family-chevron { transform: rotate(45deg); }
+
+.live-main { min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+.live-main-head { display: flex; align-items: baseline; gap: 0.9rem; }
+.live-main-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Pinned above the list, as on a TV guide: rows slide under it. */
+.on-air {
+  position: sticky; top: 1rem; z-index: 2;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.25rem; align-items: center;
+  padding: 1.1rem 1.25rem; border-radius: calc(var(--radius) + 6px);
+  background: linear-gradient(110deg, var(--surface-raised), #2e2032 70%);
+  box-shadow: 0 0 0 1rem var(--curtain);
+}
+.on-air .channel-logo { width: 8rem; }
+.on-air-text { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.on-air-text p { margin: 0; }
+.on-air-channel { display: flex; gap: 0.6rem; align-items: baseline; font-family: var(--display); font-weight: 700; font-size: var(--t-h2); }
+.on-air-channel span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.on-air-now { display: flex; align-items: center; gap: 0.55rem; font-weight: 600; font-size: var(--t-lead); }
+.on-air-desc { color: var(--muted); font-size: var(--t-small); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 60ch; }
+.on-air .channel-meter .progress-track { flex-basis: 12rem; }
+.lamp { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--bulb); box-shadow: 0 0 0 3px rgba(255, 200, 97, 0.18), 0 0 14px var(--bulb-glow); flex: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .lamp { animation: lamp 2.4s ease-in-out infinite; }
+}
+@keyframes lamp { 50% { box-shadow: 0 0 0 5px rgba(255, 200, 97, 0.08), 0 0 22px var(--bulb-glow); } }
 
 .live-channels { list-style: none; margin: 0; padding: 4px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .channel {
-  display: grid; grid-template-columns: 3.2em 4.5rem minmax(0, 1fr) minmax(0, 14rem);
-  align-items: center; gap: 1rem; padding: 0.6rem 0.9rem; border-radius: var(--radius);
+  display: grid; grid-template-columns: 3em 4.5rem minmax(0, 1fr) minmax(0, 15rem);
+  align-items: center; gap: 1rem; padding: 0.55rem 0.9rem; border-radius: var(--radius);
 }
-.channel:hover { background: rgba(239, 230, 220, 0.05); }
+.channel.lit, .channel:hover { background: rgba(239, 230, 220, 0.05); }
 .channel-number { font-family: var(--display); font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .channel-logo {
   width: 4.5rem; aspect-ratio: 16 / 10; border-radius: 6px; background: var(--surface);
-  display: grid; place-items: center; overflow: hidden;
+  display: grid; place-items: center; overflow: hidden; flex: none;
 }
 .channel-logo img { max-width: 82%; max-height: 78%; object-fit: contain; }
+.channel-monogram { font-family: var(--display); font-weight: 700; color: var(--muted); letter-spacing: 0.02em; }
+.on-air .channel-monogram { font-size: 1.6rem; }
 .channel-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .channel-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .channel-now { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -508,6 +581,17 @@ html.tv {
 .channel-next { display: flex; gap: 0.5rem; font-size: var(--t-small); min-width: 0; }
 .channel-next span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .channel-next-time { font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* Loading: the page's own shape in quiet tones, with one slow sheen. */
+.live-loading { display: flex; flex-direction: column; gap: 0.6rem; }
+.skeleton { display: block; border-radius: var(--radius); background: var(--surface); }
+.skeleton-line { height: 1.9rem; }
+.skeleton-panel { height: 8.5rem; }
+.skeleton-row { height: 3.4rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { background: linear-gradient(100deg, var(--surface) 30%, var(--surface-raised) 50%, var(--surface) 70%) 0 0 / 300% 100%; animation: sheen 1.6s ease-in-out infinite; }
+}
+@keyframes sheen { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
 .live-player .live-banner {
   position: absolute; left: var(--gutter); right: var(--gutter); bottom: 2.5rem;
@@ -526,28 +610,28 @@ html.tv {
 
 @media (max-width: 760px) {
   .live-body { grid-template-columns: 1fr; }
-  .live-groups { position: static; flex-direction: row; overflow-x: auto; max-height: none; }
-  .live-group { white-space: nowrap; }
+  .live-groups { position: static; max-height: 16rem; }
   .channel { grid-template-columns: 2.4em 3.5rem minmax(0, 1fr); }
   .channel-next { display: none; }
+  .on-air .channel-logo { width: 5rem; }
 }
-@media (prefers-reduced-motion: reduce) { .live-player .live-banner { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .live-player .live-banner, .live-family-chevron { transition: none; } }
 
-.tv .live-body { grid-template-columns: 200px 1fr; gap: 1.25rem; }
-.tv .live-groups { top: 3.5rem; max-height: calc(100vh - 5rem); }
-.tv .live-group { font-size: 0.8125rem; padding: 0.4em 0.75em; }
-.tv .channel { grid-template-columns: 2.4em 3.6rem minmax(0, 1fr) minmax(0, 10rem); gap: 0.75rem; padding: 0.4rem 0.6rem; }
+.tv .live-body { grid-template-columns: 210px 1fr; gap: 1.5rem; }
+.tv .live-groups { top: 3.75rem; max-height: calc(100vh - 4.5rem); gap: 0.5rem; }
+.tv .live-title { font-size: 1.375rem; }
+.tv .live-group, .tv .live-family-head { font-size: 0.8125rem; padding: 0.4em 0.7em; }
+.tv .live-group.nested { font-size: 0.75rem; padding-left: 1.9em; }
+.tv .live-sort-option { font-size: 0.6875rem; }
+.tv .on-air { padding: 0.8rem 1rem; gap: 1rem; top: 0.75rem; box-shadow: 0 0 0 0.75rem var(--curtain); }
+.tv .on-air .channel-logo { width: 6rem; }
+.tv .channel { grid-template-columns: 2.4em 3.6rem minmax(0, 1fr) minmax(0, 11rem); gap: 0.75rem; padding: 0.4rem 0.6rem; }
 .tv .channel-logo { width: 3.6rem; }
 .tv .live-banner { bottom: 1.5rem; padding: 0.9rem 1.1rem; }
 
 .confirm-remove { display: inline-flex; align-items: center; gap: 0.5rem; }
 button.danger { background: #c2412d; color: var(--text); }
 
-.live-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.25rem; }
-.live-sort { display: flex; gap: 0.35rem; margin-left: auto; }
-.live-sort-option { background: transparent; color: var(--muted); border: 1px solid var(--line); font-size: var(--t-small); font-weight: 500; padding: 0.4em 0.9em; }
-.live-sort-option.current { background: var(--text); color: var(--curtain-deep); border-color: var(--text); }
-.tv .live-sort-option { font-size: 0.75rem; }
 .live-more { margin: 0.75rem 0 0 4.2em; font-size: var(--t-small); }
 
 .list li.group-picker { display: block; padding: 1rem 0 1.25rem; }
@@ -564,3 +648,16 @@ button.danger { background: #c2412d; color: var(--text); }
 .group-checks input { accent-color: var(--bulb); width: 1.05rem; height: 1.05rem; }
 .group-picker-actions { display: flex; gap: 0.75rem; margin-top: 0.9rem; }
 button.secondary.current { background: var(--surface-raised); }
+
+/* ---- Search -------------------------------------------------------------------------------- */
+.search-field {
+  width: 100%; max-width: 44rem; font-size: var(--t-h2); font-family: var(--display); font-weight: 600;
+  padding: 0.6em 0.9em; border-radius: 999px; border: 0; background: var(--surface-raised); color: var(--text);
+  margin-bottom: 1.5rem;
+}
+.search-channels { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); gap: 2px 1rem; }
+.search-channels .channel { grid-template-columns: 3em 4.5rem minmax(0, 1fr); }
+/* Rows focused by the remote stop below the pinned On air panel. */
+.live-channels .channel { scroll-margin-top: 13rem; scroll-margin-bottom: 2rem; }
+.tv .live-channels .channel { scroll-margin-top: 9rem; }
+.menu-scrim { position: fixed; inset: 0; z-index: 19; }
