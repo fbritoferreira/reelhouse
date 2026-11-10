@@ -82,7 +82,7 @@ pub fn Downloads() -> Element {
 fn caption(d: &crate::downloads::Download, state: &crate::downloads::State) -> String {
     use crate::downloads::State;
     let code = match (d.item.season_no, d.item.episode_no) {
-        (Some(s), Some(e)) => format!("S{s} E{e}  "),
+        (Some(s), Some(e)) => format!("S{s} E{e}, "),
         _ => String::new(),
     };
     let what = match state {

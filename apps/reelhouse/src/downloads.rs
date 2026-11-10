@@ -226,6 +226,20 @@ pub fn start_all(client: Client, items: Vec<Item>) {
     }
 }
 
+/// Picks up downloads that were cut short when the app last closed. The queue lives in memory,
+/// and the app process ends when it leaves the screen.
+pub fn resume_unfinished(client: Client) {
+    let Some(dir) = base_dir() else { return };
+    start_all(client, unfinished(&load_index(&dir)));
+}
+
+fn unfinished(list: &[Download]) -> Vec<Item> {
+    list.iter()
+        .filter(|d| !d.done)
+        .map(|d| d.item.clone())
+        .collect()
+}
+
 fn work(dir: PathBuf) {
     loop {
         let next = {
@@ -438,6 +452,24 @@ mod tests {
         assert_eq!(total_size(None, Some(900), 100), Some(1000));
         assert_eq!(total_size(Some("bytes */1000"), None, 0), Some(1000));
         assert_eq!(total_size(None, None, 0), None);
+    }
+
+    #[test]
+    fn unfinished_keeps_queue_order_and_skips_done() {
+        let entry = |id, done| Download {
+            item: item(id),
+            bytes: 0,
+            total: None,
+            done,
+        };
+        let list = vec![
+            entry(1, true),
+            entry(2, false),
+            entry(3, true),
+            entry(4, false),
+        ];
+        let ids: Vec<i64> = unfinished(&list).iter().map(|i| i.id).collect();
+        assert_eq!(ids, vec![2, 4]);
     }
 
     #[test]
