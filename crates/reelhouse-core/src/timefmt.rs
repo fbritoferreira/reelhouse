@@ -36,9 +36,27 @@ pub fn left(now: i64, stop: i64) -> String {
     }
 }
 
+/// Whether seeking to `target` in a live HLS conversion that began at `offset` and has
+/// `converted` seconds so far needs a fresh conversion starting at `target`.
+pub fn needs_restart(target: f64, offset: f64, converted: f64) -> bool {
+    // Segments are 6 s; stay clear of the one still being written.
+    const MARGIN: f64 = 2.0;
+    target < offset || target > offset + converted - MARGIN
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restart_only_outside_what_is_converted() {
+        // Stream started at 600 s and has 30 s converted: 600..630 is reachable.
+        assert!(!needs_restart(615.0, 600.0, 30.0));
+        assert!(needs_restart(1200.0, 600.0, 30.0));
+        assert!(needs_restart(100.0, 600.0, 30.0));
+        // The last couple of seconds may not be playable yet.
+        assert!(needs_restart(629.5, 600.0, 30.0));
+    }
 
     #[test]
     fn clock_applies_the_local_offset() {

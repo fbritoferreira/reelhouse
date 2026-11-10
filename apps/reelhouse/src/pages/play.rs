@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 use reelhouse_api::Progress;
-use reelhouse_core::timefmt::{format_time, seek_fraction};
+use reelhouse_core::timefmt::{format_time, needs_restart, seek_fraction};
 
 use crate::player::{Player, capabilities};
 use crate::session::client;
@@ -25,6 +25,10 @@ pub fn Play(id: i64) -> Element {
     let mut quiet = use_signal(|| 0u32);
     // Back hides the controls at once, without the fade.
     let mut instant = use_signal(|| false);
+    // Where in the title the current stream begins. A live HLS conversion counts its own clock
+    // from here, and can only seek within what it has converted so far.
+    let mut offset = use_signal(|| 0.0);
+    let mut converting = use_signal(|| false);
     let nav = navigator();
 
     let p = player.clone();
@@ -41,29 +45,36 @@ pub fn Play(id: i64) -> Element {
             };
             // A live-converted HLS stream only reports what is converted so far; the scan knows the full length.
             let known = item.duration_s.unwrap_or(0.0);
-            match &local {
-                Some((file, _)) => p.load(file),
-                None => {
-                    let plan = match c.playback(id, &capabilities()).await {
-                        Ok(plan) => plan,
-                        Err(e) => return error.set(Some(describe(&e))),
-                    };
-                    p.load(&c.media_url(&plan.url));
-                }
-            }
-            if let Some(at) = item
+            let resume_at = item
                 .progress
                 .filter(|pr| !pr.played)
                 .map(|pr| pr.position_s)
-            {
-                p.seek(at);
+                .unwrap_or(0.0);
+            match &local {
+                Some((file, _)) => {
+                    p.load(file);
+                    p.seek(resume_at);
+                }
+                None => {
+                    // A conversion starts where we resume; a direct file seeks there itself.
+                    let plan = match c.playback(id, &capabilities(), resume_at).await {
+                        Ok(plan) => plan,
+                        Err(e) => return error.set(Some(describe(&e))),
+                    };
+                    converting.set(plan.method != reelhouse_api::PlaybackMethod::Direct);
+                    offset.set(plan.start_s);
+                    p.load(&c.media_url(&plan.url));
+                    if plan.start_s == 0.0 {
+                        p.seek(resume_at);
+                    }
+                }
             }
             p.play();
             let mut ticks = 0;
             loop {
                 futures_timer::Delay::new(Duration::from_millis(250)).await;
-                position.set(p.position());
-                duration.set(p.duration().max(known));
+                position.set(offset() + p.position());
+                duration.set((offset() + p.duration()).max(known));
                 playing.set(p.is_playing());
                 if p.is_playing() {
                     quiet += 1;
@@ -77,7 +88,7 @@ pub fn Play(id: i64) -> Element {
                         .put_progress(
                             id,
                             &Progress {
-                                position_s: p.position(),
+                                position_s: offset() + p.position(),
                                 played: false,
                             },
                         )
@@ -90,7 +101,7 @@ pub fn Play(id: i64) -> Element {
     let save_and_leave = {
         let p = player.clone();
         move || {
-            let pos = p.position();
+            let pos = offset() + p.position();
             p.pause();
             spawn(async move {
                 let _ = client()
@@ -119,17 +130,41 @@ pub fn Play(id: i64) -> Element {
             }
         }
     });
-    let skip = {
+    // Seeks to `target` seconds into the title. Past what a conversion has reached, it starts a
+    // fresh conversion there.
+    let go_to = {
         let p = player.clone();
+        move |target: f64| {
+            if !converting() || !needs_restart(target, offset(), p.duration()) {
+                p.seek(target - offset());
+                return;
+            }
+            let p = p.clone();
+            position.set(target);
+            spawn(async move {
+                let c = client();
+                match c.playback(id, &capabilities(), target).await {
+                    Ok(plan) => {
+                        offset.set(plan.start_s);
+                        p.load(&c.media_url(&plan.url));
+                        p.play();
+                    }
+                    Err(e) => error.set(Some(describe(&e))),
+                }
+            });
+        }
+    };
+    let skip = {
+        let mut go_to = go_to.clone();
         move |delta: f64| {
-            let d = duration().max(p.duration());
+            let d = duration();
             if d.is_finite() && d > 0.0 {
-                p.seek(seek_fraction((p.position() + delta) / d, d));
+                go_to(seek_fraction((position() + delta) / d, d));
             }
         }
     };
     let on_key = {
-        let skip = skip.clone();
+        let mut skip = skip.clone();
         let leave = save_and_leave.clone();
         move |e: KeyboardEvent| {
             if e.key() == Key::Escape || e.key() == Key::GoBack || e.key() == Key::BrowserBack {
@@ -161,10 +196,10 @@ pub fn Play(id: i64) -> Element {
         move |_| if p.is_playing() { p.pause() } else { p.play() }
     };
     let seek_to = {
-        let p = player.clone();
+        let mut go_to = go_to.clone();
         move |e: FormEvent| {
             if let Ok(v) = e.value().parse::<f64>() {
-                p.seek(seek_fraction(v / 1000.0, duration().max(p.duration())));
+                go_to(seek_fraction(v / 1000.0, duration()));
             }
         }
     };
