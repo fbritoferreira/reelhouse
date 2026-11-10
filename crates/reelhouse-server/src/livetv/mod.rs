@@ -1,5 +1,6 @@
 //! IPTV sources (M3U and Xtream Codes), the XMLTV guide and the DVR.
 
+pub mod dvr;
 pub mod m3u;
 pub mod xmltv;
 pub mod xtream;
