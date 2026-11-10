@@ -21,7 +21,10 @@ pub async fn open(data_dir: &Path) -> sqlx::Result<SqlitePool> {
 pub async fn open_memory() -> sqlx::Result<SqlitePool> {
     let opts = SqliteConnectOptions::from_str("sqlite::memory:")?.foreign_keys(true);
     // One connection: each in-memory connection would otherwise be its own empty database.
-    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(opts).await?;
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(opts)
+        .await?;
     sqlx::migrate!().run(&pool).await?;
     Ok(pool)
 }
@@ -31,7 +34,10 @@ mod tests {
     #[tokio::test]
     async fn migrations_apply() {
         let pool = super::open_memory().await.unwrap();
-        let (n,): (i64,) = sqlx::query_as("SELECT count(*) FROM users").fetch_one(&pool).await.unwrap();
+        let (n,): (i64,) = sqlx::query_as("SELECT count(*) FROM users")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(n, 0);
     }
 }

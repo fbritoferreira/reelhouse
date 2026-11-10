@@ -7,18 +7,39 @@ pub const VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "m4v", "avi", "mov", "ts",
 
 #[derive(Debug, PartialEq)]
 pub enum Parsed {
-    Movie { title: String, year: Option<u16> },
-    Episode { show: String, season: u16, episode: u16 },
+    Movie {
+        title: String,
+        year: Option<u16>,
+    },
+    Episode {
+        show: String,
+        season: u16,
+        episode: u16,
+    },
 }
 
 pub fn parse_movie(path: &Path) -> Parsed {
     let stem = file_stem(path);
-    let folder = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("");
+    let folder = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
     // Prefer the folder when it carries the year (Plex layout), else the file name.
-    let source = if year_of(folder).is_some() { folder } else { stem };
+    let source = if year_of(folder).is_some() {
+        folder
+    } else {
+        stem
+    };
     match year_of(source) {
-        Some((year, at)) => Parsed::Movie { title: clean(&source[..at]), year: Some(year) },
-        None => Parsed::Movie { title: stem.to_string(), year: None },
+        Some((year, at)) => Parsed::Movie {
+            title: clean(&source[..at]),
+            year: Some(year),
+        },
+        None => Parsed::Movie {
+            title: stem.to_string(),
+            year: None,
+        },
     }
 }
 
@@ -26,9 +47,17 @@ pub fn parse_episode(path: &Path) -> Option<Parsed> {
     let (season, episode) = season_episode(file_stem(path))?;
     let parent = path.parent()?;
     let parent_name = parent.file_name()?.to_str()?;
-    let show_dir = if parent_name.to_ascii_lowercase().starts_with("season") { parent.parent()? } else { parent };
+    let show_dir = if parent_name.to_ascii_lowercase().starts_with("season") {
+        parent.parent()?
+    } else {
+        parent
+    };
     let show = show_dir.file_name()?.to_str()?;
-    Some(Parsed::Episode { show: clean(show), season, episode })
+    Some(Parsed::Episode {
+        show: clean(show),
+        season,
+        episode,
+    })
 }
 
 fn file_stem(path: &Path) -> &str {
@@ -39,10 +68,12 @@ fn file_stem(path: &Path) -> &str {
 fn year_of(s: &str) -> Option<(u16, usize)> {
     let b = s.as_bytes();
     (0..b.len().saturating_sub(5)).find_map(|i| {
-        let digits = &s.get(i + 1..i + 5)?;
-        (b[i] == b'(' && b[i + 5] == b')' && digits.bytes().all(|c| c.is_ascii_digit()))
-            .then(|| (digits.parse().ok().filter(|y| (1880..=2100).contains(y)).map(|y| (y, i))))
-            .flatten()
+        let digits = s.get(i + 1..i + 5)?;
+        if b[i] != b'(' || b[i + 5] != b')' || !digits.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let year: u16 = digits.parse().ok()?;
+        (1880..=2100).contains(&year).then_some((year, i))
     })
 }
 
@@ -63,7 +94,10 @@ fn season_episode(s: &str) -> Option<(u16, u16)> {
         if episode_len == 0 {
             return None;
         }
-        Some((lower[i + 1..e].parse().ok()?, lower[e + 1..e + 1 + episode_len].parse().ok()?))
+        Some((
+            lower[i + 1..e].parse().ok()?,
+            lower[e + 1..e + 1 + episode_len].parse().ok()?,
+        ))
     })
 }
 
@@ -79,7 +113,8 @@ fn clean(s: &str) -> String {
             _ => {}
         }
     }
-    out.trim_matches(|c: char| c.is_whitespace() || c == '-' || c == '.').to_string()
+    out.trim_matches(|c: char| c.is_whitespace() || c == '-' || c == '.')
+        .to_string()
 }
 
 #[cfg(test)]
@@ -90,15 +125,23 @@ mod tests {
     fn movie_folder_with_year() {
         assert_eq!(
             parse_movie(Path::new("/m/Blade Runner (1982)/Blade Runner (1982).mkv")),
-            Parsed::Movie { title: "Blade Runner".into(), year: Some(1982) }
+            Parsed::Movie {
+                title: "Blade Runner".into(),
+                year: Some(1982)
+            }
         );
     }
 
     #[test]
     fn movie_file_with_year_and_tags() {
         assert_eq!(
-            parse_movie(Path::new("/m/Dune Part Two (2024) {imdb-tt15239678} [2160p].mkv")),
-            Parsed::Movie { title: "Dune Part Two".into(), year: Some(2024) }
+            parse_movie(Path::new(
+                "/m/Dune Part Two (2024) {imdb-tt15239678} [2160p].mkv"
+            )),
+            Parsed::Movie {
+                title: "Dune Part Two".into(),
+                year: Some(2024)
+            }
         );
     }
 
@@ -106,23 +149,38 @@ mod tests {
     fn unparsed_movie_keeps_stem() {
         assert_eq!(
             parse_movie(Path::new("/m/movie.final.v2.mkv")),
-            Parsed::Movie { title: "movie.final.v2".into(), year: None }
+            Parsed::Movie {
+                title: "movie.final.v2".into(),
+                year: None
+            }
         );
     }
 
     #[test]
     fn episode_plex_layout() {
         assert_eq!(
-            parse_episode(Path::new("/tv/The Bear/Season 02/The Bear - S02E07 - Forks.mkv")),
-            Some(Parsed::Episode { show: "The Bear".into(), season: 2, episode: 7 })
+            parse_episode(Path::new(
+                "/tv/The Bear/Season 02/The Bear - S02E07 - Forks.mkv"
+            )),
+            Some(Parsed::Episode {
+                show: "The Bear".into(),
+                season: 2,
+                episode: 7
+            })
         );
     }
 
     #[test]
     fn episode_lowercase_marker_uses_show_folder() {
         assert_eq!(
-            parse_episode(Path::new("/tv/Severance/Season 1/severance.s01e03.1080p.mkv")),
-            Some(Parsed::Episode { show: "Severance".into(), season: 1, episode: 3 })
+            parse_episode(Path::new(
+                "/tv/Severance/Season 1/severance.s01e03.1080p.mkv"
+            )),
+            Some(Parsed::Episode {
+                show: "Severance".into(),
+                season: 1,
+                episode: 3
+            })
         );
     }
 
