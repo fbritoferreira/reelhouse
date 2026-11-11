@@ -2,7 +2,14 @@
 
 An open-source media server written in Rust, with clients for iOS, Android, Android TV / Google TV, Fire TV, Apple TV, web and desktop.
 
-Status: early design. Nothing usable yet.
+Status: early, in daily use on one home server. The server, the web app and the Google TV app work; the other clients are not started.
+
+What works today:
+
+- **Libraries.** Movies and TV folders, matched to TMDB for artwork and details. Resolution badges, watched marks, Continue watching and Recently added.
+- **Playback.** Direct play where the device can, otherwise HLS remuxed or converted by ffmpeg. Audio and subtitle choice, Up next, resume. The web player has full screen and YouTube's keyboard shortcuts; the TV app answers to the remote's media keys.
+- **Downloads.** A title, a season or a whole show, queued, resumable, and playable offline on Google TV and in the browser.
+- **Live TV.** M3U and Xtream sources refreshed every 12 hours, a channel guide, channels the provider refuses marked as such, record once or every episode, and the provider's films and series on demand.
 
 Goals:
 
