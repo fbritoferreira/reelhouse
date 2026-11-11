@@ -602,3 +602,38 @@ async fn a_channel_the_provider_refuses_says_why() {
     );
     assert!(chans[1]["refused"].is_null());
 }
+
+#[tokio::test]
+async fn sources_not_refreshed_lately_are_queued_for_a_refresh() {
+    use reelhouse_server::app::{AppState, router};
+    use reelhouse_server::config::Config;
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    let db = reelhouse_server::db::open_memory().await.unwrap();
+    let state = AppState::new(db, Config::for_tests(dir.path().join("data")));
+    let app = router(state.clone());
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+
+    // Refreshed just now: nothing to do.
+    let day = std::time::Duration::from_secs(24 * 3600);
+    assert_eq!(
+        reelhouse_server::livetv::refresh_stale(&state, day)
+            .await
+            .unwrap(),
+        0
+    );
+    // Older than the limit: queued again.
+    let queued = reelhouse_server::livetv::refresh_stale(&state, std::time::Duration::ZERO)
+        .await
+        .unwrap();
+    assert_eq!(queued, 1);
+    let (_, jobs) = call(&app, "GET", "/api/v1/jobs", Some(&admin), None).await;
+    let refreshes = jobs
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|j| j["kind"] == "refresh_source")
+        .count();
+    assert_eq!(refreshes, 2);
+}

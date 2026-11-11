@@ -204,6 +204,38 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
     })
 }
 
+/// Queues a refresh of every source with none in the last `every`, so the guide keeps ahead and
+/// new channels and titles appear without anyone pressing Refresh. Returns how many it queued.
+pub async fn refresh_stale(
+    state: &crate::app::AppState,
+    every: std::time::Duration,
+) -> crate::error::ApiResult<usize> {
+    let since = crate::auth::now() - every.as_secs() as i64;
+    let stale: Vec<(i64,)> = sqlx::query_as(
+        "SELECT id FROM tv_sources s WHERE NOT EXISTS (SELECT 1 FROM jobs j \
+         WHERE j.kind = 'refresh_source' AND j.target_id = s.id AND j.created_at > ?)",
+    )
+    .bind(since)
+    .fetch_all(&state.db)
+    .await?;
+    for (id,) in &stale {
+        crate::jobs::enqueue(state, reelhouse_api::JobKind::RefreshSource, *id).await?;
+    }
+    Ok(stale.len())
+}
+
+/// Checks for stale sources hourly (see `refresh_stale`).
+pub fn spawn_refresher(state: crate::app::AppState, every: std::time::Duration) {
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = refresh_stale(&state, every).await {
+                tracing::error!("source refresh: {e}");
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        }
+    });
+}
+
 /// The HTTP status a provider answers for `url`, without reading the stream. `None` for local
 /// files and when it does not answer at all.
 pub(crate) async fn provider_status(url: &str) -> Option<u16> {
