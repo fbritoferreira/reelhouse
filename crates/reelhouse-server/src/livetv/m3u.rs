@@ -24,6 +24,33 @@ pub struct SourceVod {
     pub stream_url: String,
 }
 
+/// A film's name without the `Movie: ` or `Film: ` some providers put in front.
+fn without_label(name: &str) -> &str {
+    ["Movie: ", "Film: "]
+        .iter()
+        .find_map(|label| {
+            name.get(..label.len())
+                .filter(|head| head.eq_ignore_ascii_case(label))
+                .map(|_| &name[label.len()..])
+        })
+        .unwrap_or(name)
+}
+
+/// `Casino Royale-2006-1080p`: the title and year in front of a trailing quality.
+fn year_and_quality(name: &str) -> Option<(&str, u16)> {
+    let (rest, quality) = name.rsplit_once('-')?;
+    let quality = quality.trim().to_ascii_lowercase();
+    let lines = quality.strip_suffix('p').unwrap_or("");
+    let is_quality =
+        quality == "4k" || (!lines.is_empty() && lines.bytes().all(|b| b.is_ascii_digit()));
+    if !is_quality {
+        return None;
+    }
+    let (title, year) = rest.rsplit_once('-')?;
+    let year: u16 = year.trim().parse().ok()?;
+    (1880..=2100).contains(&year).then_some((title, year))
+}
+
 /// Splits an on-demand entry's name. Providers write episodes as `Show S01E03 - Name` and
 /// often repeat the show and season first: `Show S01 Show - S01E03/04 - Name`.
 fn vod_name(
@@ -37,6 +64,10 @@ fn vod_name(
     Option<u16>,
 ) {
     if kind == VodKind::Movie {
+        let name = without_label(name);
+        if let Some((title, year)) = year_and_quality(name) {
+            return (clean(title), Some(year), None, None, None);
+        }
         return match year_of(name) {
             Some((year, at)) => (clean(&name[..at]), Some(year), None, None, None),
             None => (clean(name), None, None, None, None),
@@ -265,6 +296,33 @@ http://stream/plain.m3u8
             Some("http://g/x.xml")
         );
         assert_eq!(epg_url("#EXTM3U\n"), None);
+    }
+
+    #[test]
+    fn film_names_lose_the_providers_label_and_quality() {
+        let film = |name| {
+            let (title, year, ..) = vod_name(VodKind::Movie, name);
+            (title, year)
+        };
+        assert_eq!(
+            film("Movie: Casino Royale-2006-1080p"),
+            ("Casino Royale".into(), Some(2006))
+        );
+        assert_eq!(
+            film("Movie: City of God (Portuguese)-2002-1080p"),
+            ("City of God (Portuguese)".into(), Some(2002))
+        );
+        assert_eq!(
+            film("Movie: Balas & Bolinhos: O Regresso (PT)-2004-720p"),
+            ("Balas & Bolinhos: O Regresso (PT)".into(), Some(2004))
+        );
+        assert_eq!(film("Heat (1995)"), ("Heat".into(), Some(1995)));
+        // A colon that is part of the title stays.
+        assert_eq!(
+            film("Mission: Impossible"),
+            ("Mission: Impossible".into(), None)
+        );
+        assert_eq!(film("Dune-4K"), ("Dune-4K".into(), None));
     }
 
     #[test]
