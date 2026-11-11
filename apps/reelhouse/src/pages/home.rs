@@ -28,15 +28,13 @@ pub fn Home() -> Element {
         None => rsx! { HomeSkeleton {} },
         Some(Err(e)) => rsx! { div { class: "page", LoadError { error: describe(e) } } },
         Some(Ok((cont, added, rows))) => {
-            // The hero is what you are in the middle of, or else the first title with artwork.
+            // The hero is what you are in the middle of, else the newest title with artwork, else
+            // any title with artwork.
             let featured: Option<Item> = cont
                 .iter()
+                .chain(added)
+                .chain(rows.iter().flat_map(|(_, items)| items))
                 .find(|i| i.backdrop_url.is_some())
-                .or_else(|| {
-                    rows.iter()
-                        .flat_map(|(_, items)| items)
-                        .find(|i| i.backdrop_url.is_some())
-                })
                 .cloned();
             rsx! {
                 if let Some(item) = featured {
