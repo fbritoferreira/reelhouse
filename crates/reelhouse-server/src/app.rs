@@ -22,7 +22,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Builds the state and starts the HLS reaper and the job worker (needs a tokio runtime).
+    /// Builds the state and starts the HLS reaper, the job worker and the source refresher (needs a
+    /// tokio runtime).
     pub fn new(db: SqlitePool, config: Config) -> Self {
         let hls = Arc::new(Sessions::default());
         hls.spawn_reaper(config.hls_idle);
@@ -32,12 +33,16 @@ impl AppState {
         let config = Arc::new(config);
         let jobs = Arc::new(tokio::sync::Notify::new());
         crate::jobs::spawn_worker(db.clone(), config.clone(), jobs.clone());
-        Self {
+        let state = Self {
             db,
             config,
             hls,
             jobs,
+        };
+        if let Some(every) = state.config.source_refresh {
+            crate::livetv::spawn_refresher(state.clone(), every);
         }
+        state
     }
 }
 

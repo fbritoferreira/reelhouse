@@ -37,6 +37,9 @@ pub struct Config {
     pub dvr_tick: Option<Duration>,
     /// Wait before a failed job's first retry; it doubles for each retry after.
     pub job_backoff: Duration,
+    /// Live TV sources are refreshed when their last refresh is older than this; `None` leaves
+    /// it to the Refresh button.
+    pub source_refresh: Option<Duration>,
 }
 
 impl Config {
@@ -56,6 +59,7 @@ impl Config {
             hls_idle: Duration::from_secs(60),
             dvr_tick: Some(Duration::from_secs(10)),
             job_backoff: Duration::from_secs(30),
+            source_refresh: Some(Duration::from_secs(12 * 3600)),
         })
     }
 
@@ -70,6 +74,7 @@ impl Config {
             hls_idle: Duration::from_secs(60),
             dvr_tick: None,
             job_backoff: Duration::from_millis(10),
+            source_refresh: None,
         }
     }
 }
