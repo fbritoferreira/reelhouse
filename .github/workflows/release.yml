@@ -32,6 +32,21 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      # release-please bumps the version in Cargo.toml only; bring the workspace's entries in
+      # Cargo.lock along on the release PR, or every build of the release rewrites the lockfile.
+      - if: steps.release.outputs.prs_created == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+      - if: steps.release.outputs.prs_created == 'true'
+        run: |
+          cargo update --workspace
+          if ! git diff --quiet Cargo.lock; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -am "chore: sync Cargo.lock with the release version"
+            git push
+          fi
 
   image:
     needs: release-please
