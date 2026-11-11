@@ -33,13 +33,16 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
       # release-please bumps the version in Cargo.toml only; bring the workspace's entries in
-      # Cargo.lock along on the release PR, or every build of the release rewrites the lockfile.
-      - if: steps.release.outputs.prs_created == 'true'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-      - if: steps.release.outputs.prs_created == 'true'
+      # Cargo.lock along on the open release PR, or every build of the release rewrites the
+      # lockfile. Every push, not only when release-please changes the PR: it leaves the PR
+      # alone for commits that add nothing to the changelog.
+      - uses: actions/checkout@v4
+      - env:
+          BRANCH: release-please--branches--main--components--reelhouse
         run: |
+          git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null || exit 0
+          git fetch origin "$BRANCH"
+          git checkout -B "$BRANCH" FETCH_HEAD
           cargo update --workspace
           if ! git diff --quiet Cargo.lock; then
             git config user.name "github-actions[bot]"
