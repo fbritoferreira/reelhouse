@@ -48,7 +48,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -am "chore: sync Cargo.lock with the release version"
-            git push
+            git push origin "HEAD:$BRANCH"
           fi
 
   image:
