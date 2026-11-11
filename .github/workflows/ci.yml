@@ -8,16 +8,25 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # A hung package mirror once held this job for 40 minutes; fail and let it be re-run instead.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # A static build from GitHub rather than apt: Ubuntu's mirrors have hung this step for
+      # half an hour at a time.
+      - name: Install ffmpeg
+        timeout-minutes: 5
+        run: |
+          curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/ffmpeg-n9.0-latest-linux64-gpl-9.0/bin" >> "$GITHUB_PATH"
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
