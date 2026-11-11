@@ -75,6 +75,22 @@ mod imp {
 
     pub struct Player;
 
+    const VOLUME: &str = "reelhouse.volume";
+    const MUTED: &str = "reelhouse.muted";
+
+    /// Keeps the volume and mute for the next title, as YouTube does.
+    pub fn remember_sound(v: &HtmlVideoElement) {
+        crate::session::save(VOLUME, Some(&v.volume().to_string()));
+        crate::session::save(MUTED, v.muted().then_some("1"));
+    }
+
+    fn restore_sound(v: &HtmlVideoElement) {
+        if let Some(level) = crate::session::load(VOLUME).and_then(|s| s.parse::<f64>().ok()) {
+            v.set_volume(level.clamp(0.0, 1.0));
+        }
+        v.set_muted(crate::session::load(MUTED).is_some());
+    }
+
     pub fn video() -> Option<HtmlVideoElement> {
         web_sys::window()?
             .document()?
@@ -110,6 +126,9 @@ mod imp {
                    if (window.Hls || waited > 5000) {{ clearInterval(t); go(); }} }}, 50); }})()"
             );
             let _ = js_sys::eval(&js);
+            if let Some(v) = self.video() {
+                restore_sound(&v);
+            }
         }
 
         pub fn play(&self) {
@@ -298,6 +317,7 @@ pub fn nudge_volume(delta: f64) -> Option<String> {
         let level = (v.volume() + delta).clamp(0.0, 1.0);
         v.set_volume(level);
         v.set_muted(level == 0.0);
+        imp::remember_sound(&v);
         Some(format!("Volume {}%", (level * 100.0).round()))
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -313,6 +333,7 @@ pub fn toggle_mute() -> Option<String> {
     {
         let v = imp::video()?;
         v.set_muted(!v.muted());
+        imp::remember_sound(&v);
         Some(if v.muted() {
             "Muted".into()
         } else {
