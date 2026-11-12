@@ -207,13 +207,11 @@ pub fn WideCard(item: Item) -> Element {
     let art = art_url(item.backdrop_url.clone().or(item.poster_url.clone()));
     let heading = item.show_title.clone().unwrap_or(item.title.clone());
     let detail = match (item.kind, item.season_no, item.episode_no) {
-        (ItemKind::Episode, Some(s), Some(e)) => {
-            let mut d = format!("S{s} E{e}");
-            if let Some(left) = time_left(&item) {
-                d.push_str(&format!("  {left}"));
-            }
-            d
-        }
+        (ItemKind::Episode, Some(s), Some(e)) => match time_left(&item) {
+            Some(left) => format!("S{s} E{e}  {left}"),
+            // Not started: Continue watching offers it as the one after a finished episode.
+            None => format!("Next episode, S{s} E{e}"),
+        },
         _ => time_left(&item).unwrap_or_default(),
     };
     rsx! {
