@@ -180,6 +180,23 @@ mod native {
             };
             load.await.map_err(|e| e.to_string())
         }));
+        let Some(Ok((eps, season_count))) = episodes.read().clone() else {
+            return rsx! {};
+        };
+        let what = if !is_show {
+            scope.title.to_lowercase()
+        } else if season_count == 1 {
+            "the whole show".to_string()
+        } else {
+            format!("all {season_count} seasons")
+        };
+        rsx! { EpisodesDownload { eps, what } }
+    }
+
+    /// One button for downloading `eps` together, `what` naming them ("the whole show"), with a
+    /// reel for how far they have got.
+    #[component]
+    pub fn EpisodesDownload(eps: Vec<Item>, what: String) -> Element {
         let mut tick = use_signal(|| 0u32);
         use_future(move || async move {
             loop {
@@ -188,24 +205,12 @@ mod native {
             }
         });
         let _ = tick();
-        let Some(Ok((eps, season_count))) = episodes.read().clone() else {
-            return rsx! {};
-        };
         if eps.is_empty() {
             return rsx! {};
         }
         let ids: Vec<i64> = eps.iter().map(|e| e.id).collect();
         let (done, busy) = downloads::summary(&ids);
         let total = eps.len();
-        let what = if is_show {
-            if season_count == 1 {
-                "the whole show".to_string()
-            } else {
-                format!("all {season_count} seasons")
-            }
-        } else {
-            scope.title.to_lowercase()
-        };
         let count = if total == 1 {
             "1 episode".to_string()
         } else {
@@ -245,4 +250,4 @@ mod native {
     }
 }
 
-pub use native::{CollectionDownload, DownloadButton, EpisodeDownload, reel_of};
+pub use native::{CollectionDownload, DownloadButton, EpisodeDownload, EpisodesDownload, reel_of};
