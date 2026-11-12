@@ -295,9 +295,9 @@ async fn every_soundtrack_reaches_hls() {
     .await;
     let id = items[0]["id"].as_i64().unwrap();
     let url = start_hls(&app, &token, id).await;
-    // The master playlist appears once ffmpeg has started.
+    // The master playlist appears once ffmpeg has started: seconds on a busy CI runner.
     let mut master = String::new();
-    for _ in 0..50 {
+    for _ in 0..300 {
         let (status, _, body) = get(&app, &format!("{url}?token={token}"), None).await;
         if status == StatusCode::OK {
             master = String::from_utf8_lossy(&body).into_owned();

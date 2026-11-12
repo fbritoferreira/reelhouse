@@ -667,3 +667,76 @@ async fn sources_say_when_they_were_last_refreshed() {
     let at = local["refreshed_at"].as_i64().expect("refreshed");
     assert!((now() - at).abs() < 60);
 }
+
+#[tokio::test]
+async fn a_refresh_replaces_only_the_part_of_the_guide_it_brings() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = now() - now() % 3600;
+    let (m3u, epg) = write_source(
+        dir.path(),
+        "http://example.invalid/news.ts",
+        &guide(&[(t, t + 3600, "Now", ""), (t + 3600, t + 7200, "Later", "")]),
+    );
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let titles = |app: &Router| {
+        let app = app.clone();
+        let admin = admin.clone();
+        async move {
+            let (_, g) = call(
+                &app,
+                "GET",
+                &format!("/api/v1/livetv/guide?start={}&end={}", t - 86400, t + 86400),
+                Some(&admin),
+                None,
+            )
+            .await;
+            let news = g
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["channel"]["name"] == "News")
+                .unwrap()
+                .clone();
+            news["programmes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| p["title"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        }
+    };
+    let refresh = |app: &Router| {
+        let app = app.clone();
+        let admin = admin.clone();
+        async move {
+            let (_, sources) =
+                call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+            let (status, _) = call(
+                &app,
+                "POST",
+                &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+                Some(&admin),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+    };
+
+    // A provider serving yesterday's guide: what is still to come stays.
+    std::fs::write(&epg, guide(&[(t - 7200, t - 3600, "Yesterday", "")])).unwrap();
+    refresh(&app).await;
+    assert_eq!(titles(&app).await, ["Yesterday", "Now", "Later"]);
+
+    // An empty guide changes nothing.
+    std::fs::write(&epg, guide(&[])).unwrap();
+    refresh(&app).await;
+    assert_eq!(titles(&app).await, ["Yesterday", "Now", "Later"]);
+
+    // A guide for the same hours replaces them.
+    std::fs::write(&epg, guide(&[(t, t + 7200, "Film", "")])).unwrap();
+    refresh(&app).await;
+    assert_eq!(titles(&app).await, ["Yesterday", "Film"]);
+}
