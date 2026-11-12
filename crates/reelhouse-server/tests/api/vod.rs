@@ -483,3 +483,53 @@ async fn a_title_left_out_of_one_refresh_is_kept() {
     .await;
     assert_eq!(films[1]["id"], ronin, "kept, id and all");
 }
+
+#[tokio::test]
+async fn on_demand_continue_offers_the_next_episode() {
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), "http://example.invalid/movie/u/p/1.mp4");
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, eps) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/episodes?show=The%20Wire",
+        Some(&token),
+        None,
+    )
+    .await;
+    let (first, second) = (
+        eps[0]["id"].as_i64().unwrap(),
+        eps[1]["id"].as_i64().unwrap(),
+    );
+    // Finished the first episode (no length known, so marked by hand).
+    let (status, _) = call(
+        &app,
+        "PUT",
+        &format!("/api/v1/vod/{first}/progress"),
+        Some(&token),
+        Some(json!({"position_s": 3000.0, "played": true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, cont) = call(&app, "GET", "/api/v1/vod/continue", Some(&token), None).await;
+    let ids: Vec<i64> = cont
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, [second]);
+
+    call(
+        &app,
+        "PUT",
+        &format!("/api/v1/vod/{second}/progress"),
+        Some(&token),
+        Some(json!({"position_s": 3000.0, "played": true})),
+    )
+    .await;
+    let (_, cont) = call(&app, "GET", "/api/v1/vod/continue", Some(&token), None).await;
+    assert_eq!(cont, json!([]), "the last episode is done");
+}
