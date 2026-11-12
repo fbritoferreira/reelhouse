@@ -776,3 +776,45 @@ async fn sources_say_how_far_their_guide_runs() {
     assert_eq!(by_name("Local")["guide_until"], t + 7200);
     assert!(by_name("Bare")["guide_until"].is_null());
 }
+
+#[tokio::test]
+async fn channels_keep_their_ids_when_the_provider_changes_its_urls() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/a/news.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, before) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+
+    // Same channels, every URL different (the music one is fixed by write_source, so change it
+    // by hand).
+    write_source(dir.path(), "http://example.invalid/b/news.ts", &guide(&[]));
+    let text = std::fs::read_to_string(&m3u)
+        .unwrap()
+        .replace("example.invalid/music.ts", "example.invalid/b/music.ts");
+    std::fs::write(&m3u, text).unwrap();
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    let (status, _) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, after) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    let ids = |v: &Value| {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c["name"].as_str().unwrap().to_string(),
+                    c["id"].as_i64().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&after), ids(&before));
+}
