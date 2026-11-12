@@ -25,16 +25,25 @@ const AUTOPLAY_POLLS: u32 = 40;
 /// A library title.
 #[component]
 pub fn Play(id: i64) -> Element {
-    rsx! { PlayerScreen { id, on_demand: false } }
+    // A one-item keyed list, so going to another title (Up next) starts a fresh player rather
+    // than keeping this one's stream and heading: keys only remount among list siblings.
+    rsx! {
+        for id in [id] {
+            PlayerScreen { key: "{id}", id, on_demand: false }
+        }
+    }
 }
 
 /// A film or episode a Live TV source offers on demand.
 #[component]
 pub fn PlayVod(id: i64) -> Element {
-    rsx! { PlayerScreen { id, on_demand: true } }
+    rsx! {
+        for id in [id] {
+            PlayerScreen { key: "{id}", id, on_demand: true }
+        }
+    }
 }
 
-/// Saves where playback is; failures are left for the next report.
 /// Attaches a library title's text subtitles, timed for a stream that begins `start_s` in.
 async fn attach_subtitles(c: &reelhouse_core::Client, p: &Player, id: i64, start_s: f64) {
     let Ok(list) = c.subtitles(id).await else {
