@@ -455,11 +455,24 @@ pub fn VodShow(title: String) -> Element {
                     p { class: "quiet",
                         if seasons.len() > 1 { "{seasons.len()} seasons, {list.len()} episodes" } else { "{list.len()} episodes" }
                     }
+                    crate::download_ui::EpisodesDownload {
+                        eps: list.iter().map(|e| vod_item(&episode_title(e, &title))).collect::<Vec<_>>(),
+                        what: if seasons.len() > 1 { format!("all {} seasons", seasons.len()) } else { "the whole show".to_string() },
+                    }
                 }
             }
-            for s in seasons {
+            for s in seasons.clone() {
                 section { key: "{s:?}", class: "vod-season",
-                    h2 { match s { Some(n) => format!("Season {n}"), None => "Episodes".to_string() } }
+                    div { class: "vod-season-head",
+                        h2 { match s { Some(n) => format!("Season {n}"), None => "Episodes".to_string() } }
+                        // Only worth its own button when there is more than one season.
+                        if seasons.len() > 1 {
+                            crate::download_ui::EpisodesDownload {
+                                eps: list.iter().filter(|e| e.season_no == s).map(|e| vod_item(&episode_title(e, &title))).collect::<Vec<_>>(),
+                                what: match s { Some(n) => format!("season {n}"), None => "these episodes".to_string() },
+                            }
+                        }
+                    }
                     ol { class: "vod-episodes",
                         for e in list.iter().filter(|e| e.season_no == s).cloned() {
                             li { key: "{e.id}", class: "episode-item",

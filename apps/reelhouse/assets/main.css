@@ -880,3 +880,5 @@ button.secondary.current { background: var(--surface-raised); }
   .rec-dot.live { animation: lamp 1.6s ease-in-out infinite; }
 }
 .tv .mode-option { font-size: 0.8125rem; }
+
+.vod-season-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
