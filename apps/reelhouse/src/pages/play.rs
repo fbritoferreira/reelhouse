@@ -19,6 +19,22 @@ const ARROW_SECONDS: f64 = if cfg!(target_arch = "wasm32") {
 const REPORT_EVERY: u32 = 40; // polls of 250 ms = 10 s
 /// Controls fade out after this many quiet polls of 250 ms while playing (3 s).
 const HIDE_AFTER: u32 = 12;
+/// What the web player's keys do, for the ? list.
+const SHORTCUTS: [(&str, &str); 12] = [
+    ("Space or K", "Play or pause"),
+    ("J / L", "Back or forward 10 seconds"),
+    ("← / →", "Back or forward 5 seconds"),
+    ("↑ / ↓", "Volume up or down"),
+    ("M", "Mute"),
+    ("F", "Full screen"),
+    ("C", "Subtitles on or off"),
+    ("0 to 9", "Jump to that tenth"),
+    ("Home / End", "Start or end"),
+    ("< / >", "Slower or faster"),
+    ("Shift+N", "Next episode"),
+    ("?", "This list"),
+];
+
 /// The next episode starts this many polls after one ends (10 s).
 const AUTOPLAY_POLLS: u32 = 40;
 
@@ -117,6 +133,8 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     // Polls left before the next episode starts by itself, once this one has ended.
     let mut countdown = use_signal(|| None::<u32>);
     let mut autoplay_off = use_signal(|| false);
+    // The list of keyboard shortcuts, shown with ? as on YouTube.
+    let mut keys_shown = use_signal(|| false);
     let nav = navigator();
 
     let p = player.clone();
@@ -391,6 +409,10 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
         let leave = save_and_leave.clone();
         let p = player.clone();
         move |e: KeyboardEvent| {
+            if e.key() == Key::Escape && keys_shown() {
+                keys_shown.set(false);
+                return;
+            }
             if e.key() == Key::Escape && crate::player::is_fullscreen() {
                 return crate::player::toggle_fullscreen();
             }
@@ -533,6 +555,10 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                         }
                         true
                     }
+                    "?" if web => {
+                        keys_shown.toggle();
+                        true
+                    }
                     n => match n.parse::<u8>() {
                         Ok(tenth) if tenth <= 9 && d > 0.0 => {
                             go_to(seek_fraction(f64::from(tenth) / 10.0, d));
@@ -618,6 +644,18 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                             "Stay here"
                         }
                     }
+                }
+            }
+            if keys_shown() {
+                div { class: "player-keys", role: "dialog", "aria-label": "Keyboard shortcuts",
+                    h2 { "Keyboard shortcuts" }
+                    dl {
+                        for (key, does) in SHORTCUTS {
+                            dt { "{key}" }
+                            dd { "{does}" }
+                        }
+                    }
+                    p { class: "quiet", "Press ? or Esc to close" }
                 }
             }
             div { class: "player-controls",
