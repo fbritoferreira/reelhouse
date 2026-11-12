@@ -65,7 +65,8 @@ impl From<JobRow> for Job {
                 _ => JobStatus::Queued,
             },
             attempts: r.attempts,
-            last_error: r.last_error,
+            // Rows saved before errors were stored without URLs still carry them.
+            last_error: r.last_error.as_deref().map(without_url_paths),
             result: r.result.and_then(|s| serde_json::from_str(&s).ok()),
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -194,7 +195,7 @@ async fn finish(
                 "UPDATE jobs SET status = ?, last_error = ?, run_after_ms = ?, updated_at = ? WHERE id = ?",
             )
             .bind(status)
-            .bind(format!("{e:#}"))
+            .bind(without_url_paths(&format!("{e:#}")))
             .bind(now_ms() + wait.as_millis() as i64)
             .bind(t)
             .bind(id)
@@ -225,4 +226,60 @@ pub async fn get(
         .fetch_one(&state.db)
         .await?;
     Ok(Json(row.into()))
+}
+
+/// `text` with every URL cut back to its scheme and host: `http://host/…`. Provider URLs carry
+/// the account's login in their path, query or user part, and job errors end up on screen.
+pub(crate) fn without_url_paths(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = ["http://", "https://"]
+        .iter()
+        .filter_map(|s| rest.find(s).map(|i| (i, s.len())))
+        .min()
+    {
+        let (start, scheme_len) = at;
+        out.push_str(&rest[..start + scheme_len]);
+        let after = &rest[start + scheme_len..];
+        let end = after
+            .find(|c: char| c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '>' | ','))
+            .unwrap_or(after.len());
+        // A colon or full stop right after a URL belongs to the sentence.
+        let end = after[..end].trim_end_matches([':', '.', ';']).len();
+        let url = &after[..end];
+        let authority_end = url.find(['/', '?', '#']).unwrap_or(url.len());
+        let authority = &url[..authority_end];
+        out.push_str(
+            authority
+                .rsplit_once('@')
+                .map_or(authority, |(_, host)| host),
+        );
+        if authority_end < url.len() {
+            out.push_str("/…");
+        }
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::without_url_paths;
+
+    #[test]
+    fn errors_keep_hosts_but_not_paths_or_logins() {
+        assert_eq!(
+            without_url_paths(
+                "reading http://user:pass@ffsr.net/get.php?username=u&password=p HTTP status server error (500) for url (http://ffsr.net/get.php?username=u&password=p)"
+            ),
+            "reading http://ffsr.net/… HTTP status server error (500) for url (http://ffsr.net/…)"
+        );
+        assert_eq!(
+            without_url_paths("https://h.example/live/u/p/1.ts: timed out"),
+            "https://h.example/…: timed out"
+        );
+        assert_eq!(without_url_paths("no url here"), "no url here");
+        assert_eq!(without_url_paths("see http://host"), "see http://host");
+    }
 }
