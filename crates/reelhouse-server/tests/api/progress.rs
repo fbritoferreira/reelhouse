@@ -158,3 +158,58 @@ async fn recently_added_puts_newest_titles_and_shows_with_new_episodes_first() {
         .collect();
     assert_eq!(titles, ["Show", "New film", "Old film"]);
 }
+
+#[tokio::test]
+async fn continue_watching_offers_the_next_episode_after_a_finished_one() {
+    let (app, db) = app_and_db(Config::for_tests(std::env::temp_dir())).await;
+    let token = admin_token(&app).await;
+    sqlx::query("INSERT INTO libraries (id, name, kind, path) VALUES (2, 't', 'tv', '/t')")
+        .execute(&db)
+        .await
+        .unwrap();
+    for sql in [
+        "INSERT INTO items (id, library_id, kind, title, added_at) VALUES (10, 2, 'show', 'Show', 0)",
+        "INSERT INTO items (id, library_id, kind, parent_id, title, season_no, added_at) VALUES (11, 2, 'season', 10, 'Season 1', 1, 0)",
+        "INSERT INTO items (id, library_id, kind, parent_id, title, season_no, added_at) VALUES (12, 2, 'season', 10, 'Season 2', 2, 0)",
+        // Ids out of order, as a scan leaves them.
+        "INSERT INTO items (id, library_id, kind, parent_id, title, season_no, episode_no, file_path, duration_s, added_at) VALUES (21, 2, 'episode', 11, 'Two', 1, 2, '/t/2', 100, 0)",
+        "INSERT INTO items (id, library_id, kind, parent_id, title, season_no, episode_no, file_path, duration_s, added_at) VALUES (20, 2, 'episode', 11, 'One', 1, 1, '/t/1', 100, 0)",
+        "INSERT INTO items (id, library_id, kind, parent_id, title, season_no, episode_no, file_path, duration_s, added_at) VALUES (22, 2, 'episode', 12, 'Three', 2, 1, '/t/3', 100, 0)",
+    ] {
+        sqlx::query(sql).execute(&db).await.unwrap();
+    }
+    let watch = |id: i64, pos: f64| {
+        let app = app.clone();
+        let token = token.clone();
+        async move {
+            let (status, _) = call(
+                &app,
+                "PUT",
+                &format!("/api/v1/items/{id}/progress"),
+                Some(&token),
+                Some(json!({"position_s": pos, "played": false})),
+            )
+            .await;
+            assert_eq!(status, StatusCode::NO_CONTENT);
+        }
+    };
+    let titles = || {
+        let app = app.clone();
+        let token = token.clone();
+        async move {
+            let (_, cont) = call(&app, "GET", "/api/v1/continue", Some(&token), None).await;
+            cont.as_array()
+                .unwrap()
+                .iter()
+                .map(|i| i["title"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        }
+    };
+
+    watch(20, 99.0).await; // finished
+    assert_eq!(titles().await, ["Two"]);
+    watch(21, 99.0).await; // finished the season: next is the next season's first
+    assert_eq!(titles().await, ["Three"]);
+    watch(22, 99.0).await; // finished the show: nothing next
+    assert!(titles().await.is_empty());
+}
