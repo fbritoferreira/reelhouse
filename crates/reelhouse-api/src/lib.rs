@@ -397,6 +397,9 @@ pub struct Recording {
     pub stop: i64,
     pub status: RecordingStatus,
     pub item_id: Option<i64>,
+    /// Why it failed, in plain words; `None` unless it failed.
+    #[serde(default)]
+    pub failure: Option<String>,
 }
 
 /// Rewrites Plex file paths before matching, for when the two servers mount media differently.

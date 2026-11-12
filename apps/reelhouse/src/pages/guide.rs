@@ -318,6 +318,7 @@ mod tests {
             stop: 4600 + 300,
             status: RecordingStatus::Scheduled,
             item_id: None,
+            failure: None,
         };
         let recs = [rec];
         assert!(recording_of(&prog(2, 1000, 4600), &recs).is_some());
