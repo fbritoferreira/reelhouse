@@ -248,7 +248,7 @@ fn TvSources(status: Signal<Option<String>>) -> Element {
                 Some(Ok(list)) => rsx! {
                     ul { class: "list",
                         for src in list.clone() {
-                            SourceRow { key: "{src.id}", src, status, on_removed: move |_| sources.restart() }
+                            SourceRow { key: "{src.id}", src, status, on_changed: move |_| sources.restart() }
                         }
                     }
                 },
@@ -405,8 +405,9 @@ fn job_state(j: &reelhouse_api::Job) -> (String, &'static str) {
     }
 }
 
+/// One source; `on_changed` after a refresh or removal, so the list is fetched again.
 #[component]
-fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHandler) -> Element {
+fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_changed: EventHandler) -> Element {
     let mut refreshing = use_signal(|| false);
     let mut editing = use_signal(|| false);
     let id = src.id;
@@ -434,6 +435,7 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHan
                         refreshing.set(true);
                         status.set(Some(refresh_message(&name, client().refresh_tv_source(id).await)));
                         refreshing.set(false);
+                        on_changed.call(());
                     }
                 },
                 if refreshing() { "Refreshing…" } else { "Refresh" }
@@ -454,7 +456,7 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHan
                             match client().delete_tv_source(id).await {
                                 Ok(()) => {
                                     status.set(Some(format!("Removed {name} and its channels.")));
-                                    on_removed.call(());
+                                    on_changed.call(());
                                 }
                                 Err(e) => status.set(Some(describe(&e))),
                             }
