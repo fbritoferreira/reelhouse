@@ -669,7 +669,7 @@ fn OnAir(entry: GuideChannel, time: Clock) -> Element {
                             span { class: "lamp", "aria-label": "Live" }
                             "Live now"
                         }
-                        p { class: "quiet on-air-desc", "This provider sends no guide for this channel." }
+                        p { class: "quiet on-air-desc", "The guide has nothing for this channel right now." }
                     },
                 }
                 if let Some(n) = next.filter(|_| time.now > 0) {

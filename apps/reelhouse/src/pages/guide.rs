@@ -235,7 +235,7 @@ pub fn GuideGrid(group: String, time: Signal<Clock>) -> Element {
                             span { class: "guide-now", style: "left: {x}%" }
                         }
                         if c.programmes.is_empty() {
-                            span { class: "guide-empty", "No guide for this channel" }
+                            span { class: "guide-empty", "Nothing in the guide right now" }
                         }
                         for p in c.programmes.clone() {
                             if let Some((left, width)) = span(p.start, p.stop, from, to) {
