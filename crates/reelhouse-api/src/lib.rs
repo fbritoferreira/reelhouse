@@ -166,6 +166,9 @@ pub struct TvSource {
     pub url: String,
     pub username: Option<String>,
     pub epg_url: Option<String>,
+    /// When its last refresh finished, Unix seconds; `None` if it has not been refreshed yet.
+    #[serde(default)]
+    pub refreshed_at: Option<i64>,
 }
 
 /// For `m3u`, `url` is the playlist. For `xtream`, it is the panel base URL and

@@ -24,6 +24,7 @@ struct SourceRow {
     url: String,
     username: Option<String>,
     epg_url: Option<String>,
+    refreshed_at: Option<i64>,
 }
 
 impl From<SourceRow> for TvSource {
@@ -39,6 +40,7 @@ impl From<SourceRow> for TvSource {
             url: r.url,
             username: r.username,
             epg_url: r.epg_url,
+            refreshed_at: r.refreshed_at,
         }
     }
 }
@@ -48,7 +50,9 @@ pub async fn list_sources(
     _admin: AdminUser,
 ) -> ApiResult<Json<Vec<TvSource>>> {
     let rows: Vec<SourceRow> = sqlx::query_as(
-        "SELECT id, name, kind, url, username, epg_url FROM tv_sources ORDER BY name",
+        "SELECT id, name, kind, url, username, epg_url, (SELECT MAX(j.updated_at) FROM jobs j \
+         WHERE j.kind = 'refresh_source' AND j.target_id = tv_sources.id AND j.status = 'done') \
+         AS refreshed_at FROM tv_sources ORDER BY name",
     )
     .fetch_all(&state.db)
     .await?;
@@ -96,6 +100,7 @@ pub async fn create_source(
             url: new.url,
             username: new.username,
             epg_url: new.epg_url,
+            refreshed_at: None,
         }),
     ))
 }

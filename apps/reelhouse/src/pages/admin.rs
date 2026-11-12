@@ -419,6 +419,12 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_removed: EventHan
         li {
             span { class: "list-name", "{src.name}" }
             span { class: "tag", "{kind}" }
+            span { class: "quiet",
+                match src.refreshed_at {
+                    Some(at) => format!("Refreshed {}", reelhouse_core::timefmt::ago(crate::live_cache::now_s(), at)),
+                    None => "Not refreshed yet".into(),
+                }
+            }
             button {
                 class: "secondary",
                 disabled: refreshing(),

@@ -36,6 +36,19 @@ pub fn left(now: i64, stop: i64) -> String {
     }
 }
 
+/// "just now", "5 min ago", "3 hours ago", "2 days ago": how long before `now` `then` was.
+pub fn ago(now: i64, then: i64) -> String {
+    let s = (now - then).max(0);
+    match s {
+        0..60 => "just now".into(),
+        60..3600 => format!("{} min ago", s / 60),
+        3600..7200 => "an hour ago".into(),
+        7200..86400 => format!("{} hours ago", s / 3600),
+        86400..172800 => "yesterday".into(),
+        _ => format!("{} days ago", s / 86400),
+    }
+}
+
 /// Whether seeking to `target` in a live HLS conversion that began at `offset` and has
 /// `converted` seconds so far needs a fresh conversion starting at `target`.
 pub fn needs_restart(target: f64, offset: f64, converted: f64) -> bool {
@@ -46,6 +59,18 @@ pub fn needs_restart(target: f64, offset: f64, converted: f64) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ago_reads_naturally() {
+        assert_eq!(ago(1000, 990), "just now");
+        assert_eq!(ago(1000, 1010), "just now");
+        assert_eq!(ago(10_000, 10_000 - 5 * 60), "5 min ago");
+        assert_eq!(ago(10_000, 10_000 - 3600), "an hour ago");
+        assert_eq!(ago(100_000, 100_000 - 3 * 3600), "3 hours ago");
+        assert_eq!(ago(200_000, 200_000 - 86400), "yesterday");
+        assert_eq!(ago(900_000, 900_000 - 3 * 86400), "3 days ago");
+    }
+
     use super::*;
 
     #[test]
