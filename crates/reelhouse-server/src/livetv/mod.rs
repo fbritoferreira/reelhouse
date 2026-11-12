@@ -228,8 +228,10 @@ pub async fn refresh_stale(
 pub fn spawn_refresher(state: crate::app::AppState, every: std::time::Duration) {
     tokio::spawn(async move {
         loop {
-            if let Err(e) = refresh_stale(&state, every).await {
-                tracing::error!("source refresh: {e}");
+            match refresh_stale(&state, every).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("source refresh: queued {n} not refreshed lately"),
+                Err(e) => tracing::error!("source refresh: {e}"),
             }
             tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
         }

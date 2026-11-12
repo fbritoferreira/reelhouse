@@ -112,7 +112,18 @@ pub fn spawn_worker(db: SqlitePool, config: Arc<Config>, wake: Arc<Notify>) {
         loop {
             match claim(&db).await {
                 Ok(Some((id, kind, target, attempts))) => {
+                    let started = std::time::Instant::now();
                     let outcome = run(&db, &config, &kind, target).await;
+                    let took = started.elapsed().as_secs_f32();
+                    match &outcome {
+                        Ok(result) => {
+                            tracing::info!("job {id} {kind} {target}: done in {took:.1}s, {result}")
+                        }
+                        // Without the error itself: a provider's error quotes its URL, login and all.
+                        Err(_) => tracing::warn!(
+                            "job {id} {kind} {target}: attempt {attempts} failed after {took:.1}s"
+                        ),
+                    }
                     finish(&db, &config, id, attempts, outcome).await;
                 }
                 Ok(None) => {
