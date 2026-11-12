@@ -426,6 +426,18 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_changed: EventHan
                     None => "Not refreshed yet".into(),
                 }
             }
+            {
+                let now = crate::live_cache::now_s();
+                match src.guide_until {
+                    Some(until) if until > now => rsx! {
+                        span { class: "quiet", "Guide for the next {reelhouse_core::timefmt::ahead(now, until)}" }
+                    },
+                    Some(until) => rsx! {
+                        span { class: "notice", "Guide ran out {reelhouse_core::timefmt::ago(now, until)}; the provider has not sent a newer one" }
+                    },
+                    None => rsx! {},
+                }
+            }
             button {
                 class: "secondary",
                 disabled: refreshing(),

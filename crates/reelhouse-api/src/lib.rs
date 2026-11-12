@@ -169,6 +169,10 @@ pub struct TvSource {
     /// When its last refresh finished, Unix seconds; `None` if it has not been refreshed yet.
     #[serde(default)]
     pub refreshed_at: Option<i64>,
+    /// When its guide's last programme ends, Unix seconds; `None` without a guide. In the past
+    /// when the provider has stopped sending a current one.
+    #[serde(default)]
+    pub guide_until: Option<i64>,
 }
 
 /// For `m3u`, `url` is the playlist. For `xtream`, it is the panel base URL and
