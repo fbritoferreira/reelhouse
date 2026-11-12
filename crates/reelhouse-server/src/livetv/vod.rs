@@ -148,18 +148,51 @@ pub async fn title(
 }
 
 /// Titles started and not finished, most recent first.
+/// Titles part-watched, and for each series whose latest finished episode has another after it
+/// not started yet, that next one. Most recent first, at most 20.
 pub async fn continue_watching(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
 ) -> ApiResult<Json<Vec<VodTitle>>> {
-    let rows: Vec<TitleRow> = sqlx::query_as(&format!(
-        "{TITLE_SELECT} WHERE ?1 IS NULL AND p.position_s > 0 AND NOT p.played ORDER BY p.updated_at DESC LIMIT 20"
-    ))
-    .bind(None::<i64>)
+    // (title, when, rowid): saves in the same second order by which was written last.
+    let mut picks: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "SELECT vod_id, updated_at, rowid FROM vod_progress WHERE user_id = ? AND position_s > 0 AND NOT played",
+    )
     .bind(user.id)
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(rows.into_iter().map(TitleRow::into_title).collect()))
+    let next_up: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "WITH fin AS ( \
+           SELECT v.source_id AS src, v.show_title AS show, v.season_no AS sn, v.episode_no AS en, \
+             p.updated_at AS at, p.rowid AS rid, ROW_NUMBER() OVER ( \
+               PARTITION BY v.source_id, v.show_title ORDER BY p.updated_at DESC, p.rowid DESC) AS r \
+           FROM vod_progress p JOIN vod_items v ON v.id = p.vod_id \
+           WHERE p.user_id = ?1 AND p.played AND v.kind = 'episode' AND v.show_title IS NOT NULL), \
+         next AS ( \
+           SELECT (SELECT n.id FROM vod_items n WHERE n.source_id = fin.src AND n.show_title = fin.show \
+             AND n.kind = 'episode' \
+             AND (n.season_no > fin.sn OR (n.season_no = fin.sn AND n.episode_no > fin.en)) \
+             ORDER BY n.season_no, n.episode_no LIMIT 1) AS id, fin.at AS at, fin.rid AS rid \
+           FROM fin WHERE r = 1) \
+         SELECT id, at, rid FROM next WHERE id IS NOT NULL AND NOT EXISTS ( \
+           SELECT 1 FROM vod_progress q WHERE q.user_id = ?1 AND q.vod_id = next.id \
+           AND (q.played OR q.position_s > 0))",
+    )
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+    picks.extend(next_up);
+    picks.sort_by_key(|p| std::cmp::Reverse((p.1, p.2)));
+    let mut out = Vec::new();
+    for (id, ..) in picks.into_iter().take(20) {
+        let row: Option<TitleRow> = sqlx::query_as(&format!("{TITLE_SELECT} WHERE v.id = ?1"))
+            .bind(id)
+            .bind(user.id)
+            .fetch_optional(&state.db)
+            .await?;
+        out.extend(row.map(TitleRow::into_title));
+    }
+    Ok(Json(out))
 }
 
 /// Watched past this share of its length, a title counts as played.
