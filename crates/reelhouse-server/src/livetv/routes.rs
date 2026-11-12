@@ -242,6 +242,7 @@ struct ChannelRow {
     logo_url: Option<String>,
     group_title: Option<String>,
     refused: Option<String>,
+    listed: bool,
 }
 
 impl From<ChannelRow> for Channel {
@@ -254,6 +255,7 @@ impl From<ChannelRow> for Channel {
             logo_url: r.logo_url,
             group_title: r.group_title,
             refused: r.refused,
+            listed: r.listed,
         }
     }
 }
@@ -267,7 +269,9 @@ const VISIBLE: &str = "NOT EXISTS (SELECT 1 FROM hidden_groups h WHERE h.source_
 
 async fn all_channels(state: &AppState, group: Option<&str>) -> ApiResult<Vec<Channel>> {
     let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
-        "SELECT id, source_id, number, name, logo_url, group_title, refused FROM channels \
+        "SELECT id, source_id, number, name, logo_url, group_title, refused, \
+         seen >= m.top AS listed FROM channels \
+         JOIN (SELECT source_id AS ms, MAX(seen) AS top FROM channels GROUP BY source_id) m ON m.ms = channels.source_id \
          WHERE {IN_GROUP} AND {VISIBLE} ORDER BY number IS NULL, number, name"
     ))
     .bind(group)
@@ -291,7 +295,9 @@ pub async fn channels(
         return Ok(Json(all_channels(&state, None).await?));
     };
     let rows: Vec<ChannelRow> = sqlx::query_as(&format!(
-        "SELECT id, source_id, number, name, logo_url, group_title, refused FROM channels \
+        "SELECT id, source_id, number, name, logo_url, group_title, refused, \
+         seen >= m.top AS listed FROM channels \
+         JOIN (SELECT source_id AS ms, MAX(seen) AS top FROM channels GROUP BY source_id) m ON m.ms = channels.source_id \
          WHERE name LIKE '%' || ? || '%' AND {VISIBLE} ORDER BY number IS NULL, number, name LIMIT 50"
     ))
     .bind(q.trim())

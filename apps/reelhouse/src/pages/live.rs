@@ -649,6 +649,10 @@ fn OnAir(entry: GuideChannel, time: Clock) -> Element {
                         p { class: "on-air-now", "Unavailable from your provider" }
                         p { class: "quiet on-air-desc", "The last try said {why}. Select it to try again." }
                     },
+                    (None, _) if !c.listed => rsx! {
+                        p { class: "on-air-now", "No longer listed by your provider" }
+                        p { class: "quiet on-air-desc", "The last refresh left it out; it may come back. Select it to try." }
+                    },
                     (None, Some(p)) => rsx! {
                         p { class: "on-air-now",
                             span { class: "lamp", "aria-label": "On now" }
@@ -694,21 +698,21 @@ fn ChannelRow(
     rsx! {
         li { onfocusin: move |_| on_focus.call(()), onmouseenter: move |_| on_focus.call(()),
             Link {
-                class: match (lit, c.refused.is_some()) {
+                class: match (lit, crate::widgets::channel_trouble(c).is_some()) {
                     (true, true) => "channel lit refused",
                     (true, false) => "channel lit",
                     (false, true) => "channel refused",
                     (false, false) => "channel",
                 },
-                title: c.refused.clone(),
+                title: c.refused.clone().or(crate::widgets::channel_trouble(c).map(str::to_string)),
                 to: Route::Watch { id: c.id, group: group.into() },
                 onclick: move |_| LIVE.write().place.returning = true,
                 span { class: "channel-number", "{number}" }
                 Logo { name: c.name.clone(), url: c.logo_url.clone() }
                 span { class: "channel-text",
                     span { class: "channel-name", "{c.name}" }
-                    if c.refused.is_some() {
-                        span { class: "channel-now quiet", "Unavailable from your provider" }
+                    if let Some(trouble) = crate::widgets::channel_trouble(c) {
+                        span { class: "channel-now quiet", "{trouble}" }
                     } else if let Some(p) = current {
                         span { class: "channel-now", "{p.title}" }
                         span { class: "channel-meter",
@@ -847,7 +851,7 @@ fn Tuned(id: i64, group: String) -> Element {
             }
             let refused: Vec<bool> = channels
                 .iter()
-                .map(|c| c.channel.refused.is_some())
+                .map(|c| crate::widgets::channel_trouble(&c.channel).is_some())
                 .collect();
             let to = channels[next_playable(&refused, i, step)].channel.id;
             p.pause();

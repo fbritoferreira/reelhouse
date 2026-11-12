@@ -121,8 +121,8 @@ pub fn Search() -> Element {
                         for c in chans {
                             li { key: "{c.id}",
                                 Link {
-                                    class: if c.refused.is_some() { "channel refused" } else { "channel" },
-                                    title: c.refused.clone(),
+                                    class: if crate::widgets::channel_trouble(&c).is_some() { "channel refused" } else { "channel" },
+                                    title: c.refused.clone().or(crate::widgets::channel_trouble(&c).map(str::to_string)),
                                     to: Route::Watch { id: c.id, group: c.group_title.clone().unwrap_or_default().into() },
                                     span { class: "channel-number", "{c.number.map(|n| n.to_string()).unwrap_or_default()}" }
                                     span { class: "channel-logo",
@@ -132,8 +132,8 @@ pub fn Search() -> Element {
                                     }
                                     span { class: "channel-text",
                                         span { class: "channel-name", "{c.name}" }
-                                        if c.refused.is_some() {
-                                            span { class: "channel-now quiet", "Unavailable from your provider" }
+                                        if let Some(trouble) = crate::widgets::channel_trouble(&c) {
+                                            span { class: "channel-now quiet", "{trouble}" }
                                         } else if let Some(g) = c.group_title.clone() {
                                             span { class: "channel-now", "{g}" }
                                         }

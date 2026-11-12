@@ -912,4 +912,16 @@ async fn a_channel_left_out_of_one_refresh_is_kept() {
         .find(|c| c["name"] == "Music")
         .map(|c| c["id"].clone());
     assert_eq!(kept, Some(music), "kept, id and all");
+    // ...and marked, so the list can say so.
+    let listed = |name: &str| {
+        after
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap()["listed"]
+            .clone()
+    };
+    assert_eq!(listed("Music"), false);
+    assert_eq!(listed("News"), true);
 }
