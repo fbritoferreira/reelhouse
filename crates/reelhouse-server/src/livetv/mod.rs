@@ -98,6 +98,30 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         .iter()
         .filter_map(|c| Some((c.name.as_ref()?.to_lowercase(), c.id.as_str())))
         .collect();
+    let existing: Vec<(i64, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, stream_url, name, group_title FROM channels WHERE source_id = ?",
+    )
+    .bind(source_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    follow_moved_urls(
+        &mut tx,
+        "channels",
+        existing
+            .into_iter()
+            .map(|(id, url, name, group)| (id, url, channel_key(&name, group.as_deref())))
+            .collect(),
+        channels
+            .iter()
+            .map(|c| {
+                (
+                    c.stream_url.clone(),
+                    channel_key(&c.name, c.group_title.as_deref()),
+                )
+            })
+            .collect(),
+    )
+    .await?;
     for (i, c) in channels.iter().enumerate() {
         let (id,): (i64,) = sqlx::query_as(
             "INSERT INTO channels (source_id, number, name, logo_url, stream_url, epg_channel_id, group_title) \
@@ -186,6 +210,49 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
+    let existing: Vec<VodKeyRow> = sqlx::query_as(
+        "SELECT id, stream_url, kind, title, year, show_title, season_no, episode_no \
+         FROM vod_items WHERE source_id = ?",
+    )
+    .bind(source_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    follow_moved_urls(
+        &mut tx,
+        "vod_items",
+        existing
+            .into_iter()
+            .map(|r| {
+                let key = vod_key(
+                    &r.kind,
+                    &r.title,
+                    r.year,
+                    r.show_title.as_deref(),
+                    r.season_no,
+                    r.episode_no,
+                );
+                (r.id, r.stream_url, key)
+            })
+            .collect(),
+        vod.iter()
+            .map(|v| {
+                let kind = match v.kind {
+                    m3u::VodKind::Movie => "movie",
+                    m3u::VodKind::Episode => "episode",
+                };
+                let key = vod_key(
+                    kind,
+                    &v.title,
+                    v.year.map(i64::from),
+                    v.show.as_deref(),
+                    v.season.map(i64::from),
+                    v.episode.map(i64::from),
+                );
+                (v.stream_url.clone(), key)
+            })
+            .collect(),
+    )
+    .await?;
     for v in &vod {
         sqlx::query(
             "INSERT INTO vod_items (source_id, kind, title, year, show_title, season_no, episode_no, \
@@ -223,6 +290,79 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         programmes,
         on_demand: vod.len() as u64,
     })
+}
+
+#[derive(sqlx::FromRow)]
+struct VodKeyRow {
+    id: i64,
+    stream_url: String,
+    kind: String,
+    title: String,
+    year: Option<i64>,
+    show_title: Option<String>,
+    season_no: Option<i64>,
+    episode_no: Option<i64>,
+}
+
+/// What a channel is, apart from its URL.
+fn channel_key(name: &str, group: Option<&str>) -> String {
+    format!("{name}\u{1f}{}", group.unwrap_or(""))
+}
+
+/// What an on-demand title is, apart from its URL: a film by name and year, an episode by show,
+/// season and number.
+fn vod_key(
+    kind: &str,
+    title: &str,
+    year: Option<i64>,
+    show: Option<&str>,
+    season: Option<i64>,
+    episode: Option<i64>,
+) -> String {
+    match (kind, show, season, episode) {
+        ("episode", Some(show), Some(s), Some(e)) => {
+            format!("episode\u{1f}{show}\u{1f}{s}\u{1f}{e}")
+        }
+        _ => format!("{kind}\u{1f}{title}\u{1f}{}", year.unwrap_or(0)),
+    }
+}
+
+/// Moves rows the provider no longer lists at their URL onto the URL it now lists the same entry
+/// under (matched by `key`), before the refresh matches by URL. Providers change their URLs now and
+/// then; without this every entry would be dropped and added again under a new id, losing what
+/// hangs off the ids: watch progress, recording rules, marks. `existing` and `incoming` are
+/// `(id, url, key)` and `(url, key)`; an entry whose key is shared by several is left alone.
+async fn follow_moved_urls(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    table: &str,
+    existing: Vec<(i64, String, String)>,
+    incoming: Vec<(String, String)>,
+) -> Result<()> {
+    let known: HashSet<&str> = existing.iter().map(|(_, url, _)| url.as_str()).collect();
+    let listed: HashSet<&str> = incoming.iter().map(|(url, _)| url.as_str()).collect();
+    // Keys of rows whose URL has gone, and of new URLs; only one-to-one matches move.
+    let mut gone: HashMap<&str, Vec<i64>> = HashMap::new();
+    for (id, url, key) in &existing {
+        if !listed.contains(url.as_str()) {
+            gone.entry(key.as_str()).or_default().push(*id);
+        }
+    }
+    let mut arrived: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (url, key) in &incoming {
+        if !known.contains(url.as_str()) {
+            arrived.entry(key.as_str()).or_default().push(url.as_str());
+        }
+    }
+    for (key, urls) in arrived {
+        if let (Some([id]), [url]) = (gone.get(key).map(Vec::as_slice), urls.as_slice()) {
+            sqlx::query(&format!("UPDATE {table} SET stream_url = ? WHERE id = ?"))
+                .bind(url)
+                .bind(id)
+                .execute(&mut **tx)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 /// Queues a refresh of every source with none in the last `every`, so the guide keeps ahead and

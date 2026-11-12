@@ -366,3 +366,74 @@ async fn a_title_the_provider_lost_says_why() {
     let body = String::from_utf8_lossy(&body);
     assert_eq!(body, "your provider no longer carries this title");
 }
+
+#[tokio::test]
+async fn titles_keep_their_ids_and_progress_when_the_provider_changes_its_urls() {
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), "http://example.invalid/movie/u/p/1.mp4");
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    let heat = films[0]["id"].as_i64().unwrap();
+    call(
+        &app,
+        "PUT",
+        &format!("/api/v1/vod/{heat}/progress"),
+        Some(&token),
+        Some(json!({"position_s": 600.0, "played": false})),
+    )
+    .await;
+    let (_, eps) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/episodes?show=The%20Wire",
+        Some(&token),
+        None,
+    )
+    .await;
+
+    // The provider moves everything to new URLs.
+    let text = std::fs::read_to_string(&m3u)
+        .unwrap()
+        .replace("/u/p/", "/u2/p2/");
+    std::fs::write(&m3u, text).unwrap();
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&token), None).await;
+    let (status, _) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(films[0]["id"], heat);
+    assert_eq!(films[0]["progress"]["position_s"], 600.0);
+    let (_, eps_after) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/episodes?show=The%20Wire",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(eps_after[0]["id"], eps[0]["id"]);
+    assert_eq!(eps_after[1]["id"], eps[1]["id"]);
+}
