@@ -130,6 +130,17 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     let mut badge = use_signal(|| None::<&'static str>);
     // What the last key changed ("Volume 60%"), shown until the controls fade.
     let mut hint = use_signal(|| None::<String>);
+    // The browser's media controls show what is playing.
+    use_effect(move || {
+        if let Some((title, sub)) = heading() {
+            // Under a film's name is its year; under a show's, the episode.
+            if sub.is_empty() || sub.chars().all(|c| c.is_ascii_digit()) {
+                crate::player::set_now_playing(&title, "");
+            } else {
+                crate::player::set_now_playing(&sub, &title);
+            }
+        }
+    });
     // Polls left before the next episode starts by itself, once this one has ended.
     let mut countdown = use_signal(|| None::<u32>);
     let mut autoplay_off = use_signal(|| false);
