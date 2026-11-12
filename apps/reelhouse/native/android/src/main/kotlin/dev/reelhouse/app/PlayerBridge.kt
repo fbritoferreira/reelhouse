@@ -18,6 +18,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.SubtitleView
 import org.json.JSONArray
@@ -32,6 +33,8 @@ import org.json.JSONObject
 class PlayerBridge(private val activity: Activity) {
     private val main = Handler(Looper.getMainLooper())
     private var player: ExoPlayer? = null
+    /** Makes this the app the remote's media keys go to while it plays (else the last one that did). */
+    private var session: MediaSession? = null
     private var frame: AspectRatioFrameLayout? = null
 
     @Volatile private var positionS = 0.0
@@ -62,7 +65,11 @@ class PlayerBridge(private val activity: Activity) {
         subtitles.setUserDefaultTextSize()
         frame.addView(subtitles, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         parent.addView(frame, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        val exo = ExoPlayer.Builder(activity).build()
+        // The remote's fast-forward and rewind skip 10 s, as the on-screen buttons do.
+        val exo = ExoPlayer.Builder(activity)
+            .setSeekForwardIncrementMs(10_000)
+            .setSeekBackIncrementMs(10_000)
+            .build()
         exo.setVideoSurfaceView(surface)
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
@@ -80,6 +87,8 @@ class PlayerBridge(private val activity: Activity) {
         })
         this.frame = frame
         player = exo
+        // One session per player screen; ids must be unique while one is still being released.
+        session = MediaSession.Builder(activity, exo).setId("reelhouse-${System.nanoTime()}").build()
         tick()
     }
 
@@ -162,6 +171,8 @@ class PlayerBridge(private val activity: Activity) {
     /** Stops playback and removes the video layer when the player screen closes. */
     fun release() {
         main.post {
+            session?.release()
+            session = null
             player?.release()
             player = null
             frame?.let { (it.parent as? ViewGroup)?.removeView(it) }
