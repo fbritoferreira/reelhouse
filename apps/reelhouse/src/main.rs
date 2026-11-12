@@ -13,6 +13,7 @@ mod pages;
 mod player;
 mod session;
 mod tv;
+mod unsent;
 mod widgets;
 
 use dioxus::prelude::*;
@@ -213,7 +214,8 @@ fn Shell() -> Element {
         // Not session::client(): that reads context, a hook, which cannot run inside this one.
         let client = session.peek().client.clone();
         if client.token().is_some() {
-            downloads::resume_unfinished(client);
+            downloads::resume_unfinished(client.clone());
+            spawn(async move { unsent::send(&client).await });
         }
     });
     let user = session.read().user.clone();
