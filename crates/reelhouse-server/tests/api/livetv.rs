@@ -870,3 +870,46 @@ async fn a_sources_name_and_guide_url_can_be_changed() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_channel_left_out_of_one_refresh_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, before) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    let music = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "Music")
+        .unwrap()["id"]
+        .clone();
+
+    // The next list leaves Music out.
+    let text = std::fs::read_to_string(&m3u).unwrap().replace(
+        "#EXTINF:-1 tvg-chno=\"9\",Music\nhttp://example.invalid/music.ts\n",
+        "",
+    );
+    std::fs::write(&m3u, text).unwrap();
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    let (status, report) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["channels"], 1);
+    let (_, after) = call(&app, "GET", "/api/v1/livetv/channels", Some(&admin), None).await;
+    let kept = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "Music")
+        .map(|c| c["id"].clone());
+    assert_eq!(kept, Some(music), "kept, id and all");
+}
