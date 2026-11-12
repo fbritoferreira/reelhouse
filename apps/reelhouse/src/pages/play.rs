@@ -2,7 +2,6 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use dioxus::prelude::*;
-use reelhouse_api::Progress;
 use reelhouse_core::timefmt::{format_time, needs_restart, seek_fraction};
 
 use crate::Route;
@@ -34,18 +33,6 @@ pub fn PlayVod(id: i64) -> Element {
 }
 
 /// Saves where playback is; failures are left for the next report.
-async fn save_progress(c: &reelhouse_core::Client, id: i64, on_demand: bool, position_s: f64) {
-    let p = Progress {
-        position_s,
-        played: false,
-    };
-    let _ = if on_demand {
-        c.put_vod_progress(id, &p).await
-    } else {
-        c.put_progress(id, &p).await
-    };
-}
-
 /// Attaches a library title's text subtitles, timed for a stream that begins `start_s` in.
 async fn attach_subtitles(c: &reelhouse_core::Client, p: &Player, id: i64, start_s: f64) {
     let Ok(list) = c.subtitles(id).await else {
@@ -154,13 +141,12 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                         }
                         (
                             t.duration_s.unwrap_or(0.0),
-                            t.progress
-                                .filter(|p| !p.played)
-                                .map(|p| p.position_s)
+                            crate::unsent::position(id, true)
+                                .or_else(|| t.progress.filter(|p| !p.played).map(|p| p.position_s))
                                 .unwrap_or(0.0),
                         )
                     }
-                    Err(_) => (0.0, 0.0),
+                    Err(_) => (0.0, crate::unsent::position(id, true).unwrap_or(0.0)),
                 }
             } else {
                 let item = match (c.item(id).await, &local) {
@@ -170,11 +156,14 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 };
                 // A live-converted HLS stream only reports what is converted so far; the scan knows
                 // the full length.
-                let resume = item
-                    .progress
-                    .as_ref()
-                    .filter(|pr| !pr.played)
-                    .map(|pr| pr.position_s)
+                // A position watched offline and not yet sent is newer than the server's.
+                let resume = crate::unsent::position(id, false)
+                    .or_else(|| {
+                        item.progress
+                            .as_ref()
+                            .filter(|pr| !pr.played)
+                            .map(|pr| pr.position_s)
+                    })
                     .unwrap_or(0.0);
                 badge.set(crate::widgets::quality(item.height));
                 heading.set(Some(
@@ -275,7 +264,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                 }
                 ticks += 1;
                 if ticks % REPORT_EVERY == 0 && p.is_playing() {
-                    save_progress(&c, id, on_demand, offset() + p.position()).await;
+                    crate::unsent::save(&c, id, on_demand, offset() + p.position()).await;
                 }
             }
         }
@@ -286,7 +275,7 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
         move || {
             let pos = offset() + p.position();
             p.pause();
-            spawn(async move { save_progress(&client(), id, on_demand, pos).await });
+            spawn(async move { crate::unsent::save(&client(), id, on_demand, pos).await });
             nav.go_back();
         }
     };
