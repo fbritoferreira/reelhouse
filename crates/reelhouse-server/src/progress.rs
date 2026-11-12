@@ -72,7 +72,7 @@ pub async fn continue_watching(
     .fetch_all(&state.db)
     .await?;
     picks.extend(next_up);
-    picks.sort_by(|a, b| (b.1, b.2).cmp(&(a.1, a.2)));
+    picks.sort_by_key(|p| std::cmp::Reverse((p.1, p.2)));
     let mut out = Vec::new();
     for (id, ..) in picks.into_iter().take(20) {
         let row: Option<ItemRow> = sqlx::query_as(&format!("{ITEM_SELECT} WHERE i.id = ?"))
