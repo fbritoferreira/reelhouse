@@ -90,6 +90,10 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
     };
 
     let mut tx = db.begin().await?;
+    let seen = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
     let mut ids = HashSet::new();
     // Guide channel id -> our channel ids; several feeds (SD, HD) may share one guide id.
     let mut by_epg: HashMap<String, Vec<i64>> = HashMap::new();
@@ -124,10 +128,11 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
     .await?;
     for (i, c) in channels.iter().enumerate() {
         let (id,): (i64,) = sqlx::query_as(
-            "INSERT INTO channels (source_id, number, name, logo_url, stream_url, epg_channel_id, group_title) \
-             VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source_id, stream_url) DO UPDATE SET \
+            "INSERT INTO channels (source_id, number, name, logo_url, stream_url, epg_channel_id, group_title, seen) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source_id, stream_url) DO UPDATE SET \
              number = excluded.number, name = excluded.name, logo_url = excluded.logo_url, \
-             epg_channel_id = excluded.epg_channel_id, group_title = excluded.group_title RETURNING id",
+             epg_channel_id = excluded.epg_channel_id, group_title = excluded.group_title, \
+             seen = excluded.seen RETURNING id",
         )
         .bind(source_id)
         .bind(c.number.unwrap_or(i as i64 + 1))
@@ -136,6 +141,7 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         .bind(&c.stream_url)
         .bind(&c.epg_channel_id)
         .bind(&c.group_title)
+        .bind(seen)
         .fetch_one(&mut *tx)
         .await?;
         ids.insert(id);
@@ -148,16 +154,13 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
             by_epg.entry(e.to_string()).or_default().push(id);
         }
     }
-    let stored: Vec<(i64,)> = sqlx::query_as("SELECT id FROM channels WHERE source_id = ?")
+    // A channel left out is kept a week, as on-demand titles are: providers drop and restore whole
+    // groups, and the channel's id carries its refused mark, recording rules and recent spot.
+    sqlx::query("DELETE FROM channels WHERE source_id = ? AND seen < ?")
         .bind(source_id)
-        .fetch_all(&mut *tx)
+        .bind(seen - UNLISTED_KEPT_MS)
+        .execute(&mut *tx)
         .await?;
-    for (id,) in stored.into_iter().filter(|(id,)| !ids.contains(id)) {
-        sqlx::query("DELETE FROM channels WHERE id = ?")
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
-    }
     // Replace only the hours the new guide covers: a provider that serves yesterday's guide, or
     // none, must not wipe what is still to come. Programmes long over go either way.
     let span = guide
@@ -206,10 +209,6 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
     }
     // On-demand titles keep their ids across refreshes (people's progress hangs off them):
     // upsert by URL, then drop the ones this refresh did not list.
-    let seen = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0);
     let existing: Vec<VodKeyRow> = sqlx::query_as(
         "SELECT id, stream_url, kind, title, year, show_title, season_no, episode_no \
          FROM vod_items WHERE source_id = ?",
@@ -294,7 +293,7 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
     })
 }
 
-/// How long an on-demand title the provider stops listing is kept (see `refresh`).
+/// How long a channel or on-demand title the provider stops listing is kept (see `refresh`).
 const UNLISTED_KEPT_MS: i64 = 7 * 24 * 3600 * 1000;
 
 #[derive(sqlx::FromRow)]
