@@ -359,6 +359,18 @@ pub fn LoadError(error: String) -> Element {
     rsx! { p { class: "notice", "Couldn't load this page: {error}" } }
 }
 
+/// Why a channel probably won't play, for the lists: the provider refused it last time, or no
+/// longer lists it. `None` when nothing is known against it.
+pub fn channel_trouble(c: &reelhouse_api::Channel) -> Option<&'static str> {
+    if c.refused.is_some() {
+        Some("Unavailable from your provider")
+    } else if !c.listed {
+        Some("No longer listed by your provider")
+    } else {
+        None
+    }
+}
+
 pub fn describe(e: &ClientError) -> String {
     match e {
         ClientError::Unauthorized => "your session has ended. Sign in again.".into(),

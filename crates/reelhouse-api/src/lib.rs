@@ -244,6 +244,13 @@ pub struct Channel {
     /// Why the provider refused this channel the last time it was played; `None` once it plays.
     #[serde(default)]
     pub refused: Option<String>,
+    /// Whether the source's latest refresh listed it; one left out is kept a while.
+    #[serde(default = "listed_default")]
+    pub listed: bool,
+}
+
+fn listed_default() -> bool {
+    true
 }
 
 /// Times are Unix seconds.
