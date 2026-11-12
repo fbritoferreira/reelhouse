@@ -134,10 +134,31 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
             .execute(&mut *tx)
             .await?;
     }
+    // Replace only the hours the new guide covers: a provider that serves yesterday's guide, or
+    // none, must not wipe what is still to come. Programmes long over go either way.
+    let span = guide
+        .programmes
+        .iter()
+        .map(|p| p.start)
+        .min()
+        .zip(guide.programmes.iter().map(|p| p.stop).max());
+    if let Some((from, to)) = span {
+        sqlx::query(
+            "DELETE FROM programmes WHERE channel_id IN (SELECT id FROM channels WHERE source_id = ?) \
+             AND stop > ? AND start < ?",
+        )
+        .bind(source_id)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+    }
     sqlx::query(
-        "DELETE FROM programmes WHERE channel_id IN (SELECT id FROM channels WHERE source_id = ?)",
+        "DELETE FROM programmes WHERE channel_id IN (SELECT id FROM channels WHERE source_id = ?) \
+         AND stop < ?",
     )
     .bind(source_id)
+    .bind(crate::auth::now() - 86400)
     .execute(&mut *tx)
     .await?;
     let mut programmes = 0;
