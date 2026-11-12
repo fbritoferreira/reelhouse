@@ -76,7 +76,10 @@ pub fn Home() -> Element {
                                     }
                                     span { class: "poster-title", "{t.show_title.clone().unwrap_or(t.title.clone())}" }
                                     if let (Some(s), Some(e)) = (t.season_no, t.episode_no) {
-                                        span { class: "poster-caption", "S{s} E{e}" }
+                                        span { class: "poster-caption",
+                                            // Not started: offered as the one after a finished episode.
+                                            if t.progress.is_some() { "S{s} E{e}" } else { "Next episode, S{s} E{e}" }
+                                        }
                                     }
                                 }
                             }
