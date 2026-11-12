@@ -740,3 +740,39 @@ async fn a_refresh_replaces_only_the_part_of_the_guide_it_brings() {
     refresh(&app).await;
     assert_eq!(titles(&app).await, ["Yesterday", "Film"]);
 }
+
+#[tokio::test]
+async fn sources_say_how_far_their_guide_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = now();
+    let (m3u, epg) = write_source(
+        dir.path(),
+        "http://example.invalid/news.ts",
+        &guide(&[(t, t + 3600, "Now", ""), (t + 3600, t + 7200, "Later", "")]),
+    );
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    let (_, src) = call(
+        &app,
+        "POST",
+        "/api/v1/livetv/sources",
+        Some(&admin),
+        Some(json!({"name": "Bare", "kind": "m3u", "url": "http://example.invalid/x.m3u"})),
+    )
+    .await;
+    assert!(src["guide_until"].is_null());
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    let by_name = |n: &str| {
+        sources
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == n)
+            .unwrap()
+            .clone()
+    };
+    // XMLTV times are to the second, so the last programme ends at t + 7200.
+    assert_eq!(by_name("Local")["guide_until"], t + 7200);
+    assert!(by_name("Bare")["guide_until"].is_null());
+}

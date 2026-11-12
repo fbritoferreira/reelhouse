@@ -49,6 +49,17 @@ pub fn ago(now: i64, then: i64) -> String {
     }
 }
 
+/// "45 min", "an hour", "5 hours", "3 days": how far ahead `until` is from `now`.
+pub fn ahead(now: i64, until: i64) -> String {
+    let s = (until - now).max(0);
+    match s {
+        0..3600 => format!("{} min", (s / 60).max(1)),
+        3600..7200 => "an hour".into(),
+        7200..172800 => format!("{} hours", s / 3600),
+        _ => format!("{} days", s / 86400),
+    }
+}
+
 /// Whether seeking to `target` in a live HLS conversion that began at `offset` and has
 /// `converted` seconds so far needs a fresh conversion starting at `target`.
 pub fn needs_restart(target: f64, offset: f64, converted: f64) -> bool {
@@ -59,6 +70,15 @@ pub fn needs_restart(target: f64, offset: f64, converted: f64) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ahead_reads_naturally() {
+        assert_eq!(ahead(1000, 1010), "1 min");
+        assert_eq!(ahead(0, 45 * 60), "45 min");
+        assert_eq!(ahead(0, 3600), "an hour");
+        assert_eq!(ahead(0, 5 * 3600), "5 hours");
+        assert_eq!(ahead(0, 3 * 86400), "3 days");
+    }
 
     #[test]
     fn ago_reads_naturally() {
