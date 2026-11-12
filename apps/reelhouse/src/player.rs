@@ -293,6 +293,31 @@ pub fn stereo_capabilities() -> Capabilities {
     }
 }
 
+/// Tells the browser what is playing, `title` by `artist` (an episode by its show; a film by
+/// nobody), so the system's media controls, media keys and headphone buttons show and drive it.
+/// Web only; the TV app does the same with a Media3 session.
+pub fn set_now_playing(title: &str, artist: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let js = format!(
+            "(() => {{ if (!('mediaSession' in navigator)) return; \
+             const v = () => document.getElementById({id:?}); \
+             navigator.mediaSession.metadata = new MediaMetadata({{ title: {title:?}, artist: {artist:?} }}); \
+             const on = (a, f) => {{ try {{ navigator.mediaSession.setActionHandler(a, f); }} catch (_) {{}} }}; \
+             on('play', () => v() && v().play()); \
+             on('pause', () => v() && v().pause()); \
+             on('seekbackward', () => v() && (v().currentTime = Math.max(0, v().currentTime - 10))); \
+             on('seekforward', () => v() && (v().currentTime += 10)); }})()",
+            id = imp::VIDEO_ID
+        );
+        let _ = js_sys::eval(&js);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (title, artist);
+    }
+}
+
 /// Fills the screen with the player (video and controls), or leaves full screen. Web only; the
 /// TV is full screen already.
 pub fn toggle_fullscreen() {
