@@ -152,7 +152,7 @@ async fn start_hls(app: &axum::Router, token: &str, id: i64) -> String {
         Some(caps),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{plan}");
     assert_eq!(plan["method"], "remux");
     plan["url"].as_str().unwrap().to_string()
 }

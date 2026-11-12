@@ -78,6 +78,13 @@ pub async fn playback(
             let session = state
                 .hls
                 .start(&path, method, caps.max_height, start_s, &audio)?;
+            // As for live and on-demand: answer once the playlist exists, or with ffmpeg's reason,
+            // rather than hand the player a playlist that never comes.
+            state
+                .hls
+                .ready(&session, std::time::Duration::from_secs(30))
+                .await
+                .map_err(|why| ApiError::BadGateway(format!("the title did not start: {why}")))?;
             (format!("/api/v1/hls/{session}/index.m3u8"), start_s)
         }
     };
