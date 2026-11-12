@@ -19,6 +19,8 @@ const ARROW_SECONDS: f64 = if cfg!(target_arch = "wasm32") {
 const REPORT_EVERY: u32 = 40; // polls of 250 ms = 10 s
 /// Controls fade out after this many quiet polls of 250 ms while playing (3 s).
 const HIDE_AFTER: u32 = 12;
+/// The next episode starts this many polls after one ends (10 s).
+const AUTOPLAY_POLLS: u32 = 40;
 
 /// A library title.
 #[component]
@@ -103,6 +105,9 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
     let mut badge = use_signal(|| None::<&'static str>);
     // What the last key changed ("Volume 60%"), shown until the controls fade.
     let mut hint = use_signal(|| None::<String>);
+    // Polls left before the next episode starts by itself, once this one has ended.
+    let mut countdown = use_signal(|| None::<u32>);
+    let mut autoplay_off = use_signal(|| false);
     let nav = navigator();
 
     let p = player.clone();
@@ -261,6 +266,21 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
                             Err(e2) => error.set(Some(describe(&e2))),
                         }
                     }
+                }
+                // Ended with an episode after it: count down, then play it, as a TV box would.
+                let ended = duration() > 0.0 && duration() - position() < 1.5 && !p.is_playing();
+                if let Some((next, _)) = up_next().filter(|_| ended && !autoplay_off()) {
+                    match countdown() {
+                        None => countdown.set(Some(AUTOPLAY_POLLS)),
+                        Some(0) => {
+                            crate::unsent::save(&c, id, on_demand, duration()).await;
+                            nav.push(next);
+                            return;
+                        }
+                        Some(n) => countdown.set(Some(n - 1)),
+                    }
+                } else if countdown().is_some() {
+                    countdown.set(None);
                 }
                 ticks += 1;
                 if ticks % REPORT_EVERY == 0 && p.is_playing() {
@@ -572,8 +592,23 @@ fn PlayerScreen(id: i64, on_demand: bool) -> Element {
             }
             if let Some((to, label)) = up_next().filter(|_| near_end) {
                 div { class: "up-next",
-                    span { class: "quiet", "Up next" }
+                    span { class: "quiet",
+                        match countdown() {
+                            Some(n) => format!("Up next in {} s", n.div_ceil(4)),
+                            None => "Up next".to_string(),
+                        }
+                    }
                     Link { class: "primary", to, "{label}" }
+                    if countdown().is_some() {
+                        button {
+                            class: "secondary",
+                            onclick: move |_| {
+                                autoplay_off.set(true);
+                                countdown.set(None);
+                            },
+                            "Stay here"
+                        }
+                    }
                 }
             }
             div { class: "player-controls",
