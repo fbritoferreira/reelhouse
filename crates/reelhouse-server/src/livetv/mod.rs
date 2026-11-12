@@ -279,9 +279,11 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query("DELETE FROM vod_items WHERE source_id = ? AND seen != ?")
+    // Providers' lists come and go by thousands between refreshes. A title left out is kept for
+    // a week, so one that comes back keeps its id and the progress hanging off it.
+    sqlx::query("DELETE FROM vod_items WHERE source_id = ? AND seen < ?")
         .bind(source_id)
-        .bind(seen)
+        .bind(seen - UNLISTED_KEPT_MS)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -291,6 +293,9 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         on_demand: vod.len() as u64,
     })
 }
+
+/// How long an on-demand title the provider stops listing is kept (see `refresh`).
+const UNLISTED_KEPT_MS: i64 = 7 * 24 * 3600 * 1000;
 
 #[derive(sqlx::FromRow)]
 struct VodKeyRow {
