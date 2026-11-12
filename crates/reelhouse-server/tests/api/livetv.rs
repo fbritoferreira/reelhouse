@@ -818,3 +818,55 @@ async fn channels_keep_their_ids_when_the_provider_changes_its_urls() {
     };
     assert_eq!(ids(&after), ids(&before));
 }
+
+#[tokio::test]
+async fn a_sources_name_and_guide_url_can_be_changed() {
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    let kid = user_token(&app, &admin, "kid").await;
+    let (_, src) = call(
+        &app,
+        "POST",
+        "/api/v1/livetv/sources",
+        Some(&admin),
+        Some(json!({"name": "P", "kind": "m3u", "url": "http://example.invalid/list.m3u"})),
+    )
+    .await;
+    let uri = format!("/api/v1/livetv/sources/{}", src["id"]);
+    let (status, _) = call(&app, "PATCH", &uri, Some(&kid), Some(json!({"name": "x"}))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, changed) = call(
+        &app,
+        "PATCH",
+        &uri,
+        Some(&admin),
+        Some(json!({"name": "Provider", "epg_url": "http://example.invalid/guide.xml"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{changed}");
+    assert_eq!(changed["name"], "Provider");
+    assert_eq!(changed["epg_url"], "http://example.invalid/guide.xml");
+    assert_eq!(changed["url"], "http://example.invalid/list.m3u");
+
+    // An empty guide URL goes back to the playlist's own.
+    let (_, changed) = call(
+        &app,
+        "PATCH",
+        &uri,
+        Some(&admin),
+        Some(json!({"epg_url": ""})),
+    )
+    .await;
+    assert!(changed["epg_url"].is_null());
+    assert_eq!(changed["name"], "Provider");
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/v1/livetv/sources/999",
+        Some(&admin),
+        Some(json!({"name": "y"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

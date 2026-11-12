@@ -410,6 +410,8 @@ fn job_state(j: &reelhouse_api::Job) -> (String, &'static str) {
 fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_changed: EventHandler) -> Element {
     let mut refreshing = use_signal(|| false);
     let mut editing = use_signal(|| false);
+    let mut guide_open = use_signal(|| false);
+    let mut guide_url = use_signal(|| src.epg_url.clone().unwrap_or_default());
     let id = src.id;
     let name = src.name.clone();
     let kind = match src.kind {
@@ -458,6 +460,12 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_changed: EventHan
                 onclick: move |_| editing.toggle(),
                 "Choose groups"
             }
+            button {
+                class: if guide_open() { "secondary current" } else { "secondary" },
+                "aria-expanded": guide_open(),
+                onclick: move |_| guide_open.toggle(),
+                "Guide address"
+            }
             ConfirmRemove {
                 what: src.name.clone(),
                 on_confirm: {
@@ -480,6 +488,37 @@ fn SourceRow(src: TvSource, status: Signal<Option<String>>, on_changed: EventHan
         if editing() {
             li { class: "group-picker",
                 GroupPicker { source: id, status, on_done: move |_| editing.set(false) }
+            }
+        }
+        if guide_open() {
+            li {
+                form {
+                    class: "form-grid",
+                    onsubmit: move |e: FormEvent| async move {
+                        e.prevent_default();
+                        match client().set_tv_source_guide(id, &guide_url()).await {
+                            Ok(_) => {
+                                status.set(Some(if guide_url().trim().is_empty() {
+                                    "The guide comes from the playlist again. Refresh to load it.".to_string()
+                                } else {
+                                    "Guide address saved. Refresh to load it.".to_string()
+                                }));
+                                guide_open.set(false);
+                                on_changed.call(());
+                            }
+                            Err(e) => status.set(Some(describe(&e))),
+                        }
+                    },
+                    label { "Guide address (XMLTV), empty for the playlist's own"
+                        input {
+                            r#type: "url",
+                            value: "{guide_url}",
+                            placeholder: "http://…/xmltv.php",
+                            oninput: move |e| guide_url.set(e.value()),
+                        }
+                    }
+                    button { class: "primary", r#type: "submit", "Save" }
+                }
             }
         }
     }
