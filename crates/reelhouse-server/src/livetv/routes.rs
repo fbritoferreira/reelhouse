@@ -542,6 +542,7 @@ struct RecordingRow {
     stop: i64,
     status: String,
     item_id: Option<i64>,
+    failure: Option<String>,
 }
 
 pub async fn recordings(
@@ -549,8 +550,8 @@ pub async fn recordings(
     CurrentUser(user): CurrentUser,
 ) -> ApiResult<Json<Vec<Recording>>> {
     let rows: Vec<RecordingRow> = sqlx::query_as(
-        "SELECT r.id, r.rule_id, r.channel_id, r.title, r.subtitle, r.start, r.stop, r.status, r.item_id \
-         FROM recordings r JOIN recording_rules u ON u.id = r.rule_id WHERE u.user_id = ? ORDER BY r.start",
+        "SELECT r.id, r.rule_id, r.channel_id, r.title, r.subtitle, r.start, r.stop, r.status, r.item_id, \
+         r.failure FROM recordings r JOIN recording_rules u ON u.id = r.rule_id WHERE u.user_id = ? ORDER BY r.start",
     )
     .bind(user.id)
     .fetch_all(&state.db)
@@ -567,6 +568,7 @@ pub async fn recordings(
                 stop: r.stop,
                 status: dvr::parse_status(&r.status),
                 item_id: r.item_id,
+                failure: r.failure,
             })
             .collect(),
     ))

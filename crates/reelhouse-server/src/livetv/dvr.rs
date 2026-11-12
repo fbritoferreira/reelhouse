@@ -238,10 +238,12 @@ pub async fn schedule(db: &SqlitePool, now: i64) -> Result<Plan> {
         .await?;
     }
     for id in &plan.missed {
-        sqlx::query("UPDATE recordings SET status = 'failed' WHERE id = ?")
-            .bind(id)
-            .execute(db)
-            .await?;
+        fail(
+            db,
+            *id,
+            "the server wasn't running when it was due to start",
+        )
+        .await?;
     }
     Ok(plan)
 }
@@ -312,7 +314,7 @@ impl Recorder {
         for id in plan.start {
             if let Err(e) = self.start(id, now).await {
                 tracing::warn!("dvr: recording {id} failed to start: {e:#}");
-                set_status(&self.db, id, RecordingStatus::Failed).await?;
+                fail(&self.db, id, "it could not be started on the server").await?;
             }
         }
         for id in plan.stop {
@@ -361,15 +363,26 @@ impl Recorder {
 
     /// Marks the recording done and adds it to the library, or failed if nothing was written.
     async fn finish(&self, id: i64) -> Result<()> {
-        let (rule_id, title, subtitle, file): (i64, String, Option<String>, Option<String>) =
-            sqlx::query_as(
-                "SELECT rule_id, title, subtitle, file_path FROM recordings WHERE id = ?",
-            )
-            .bind(id)
-            .fetch_one(&self.db)
-            .await?;
+        let (rule_id, title, subtitle, file, url): (
+            i64,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+        ) = sqlx::query_as(
+            "SELECT r.rule_id, r.title, r.subtitle, r.file_path, c.stream_url FROM recordings r \
+             JOIN channels c ON c.id = r.channel_id WHERE r.id = ?",
+        )
+        .bind(id)
+        .fetch_one(&self.db)
+        .await?;
         let Some(file) = file.filter(|f| std::fs::metadata(f).is_ok_and(|m| m.len() > 0)) else {
-            return set_status(&self.db, id, RecordingStatus::Failed).await;
+            // Nothing written: ask the provider why, now that ffmpeg has let go of the stream.
+            let why = super::provider_status(&url)
+                .await
+                .and_then(|s| super::refusal(s, "channel"))
+                .unwrap_or_else(|| "the channel sent nothing to record".into());
+            return fail(&self.db, id, &why).await;
         };
         let library = self.library().await?;
         let info = probe(Path::new(&file)).await.unwrap_or_default();
@@ -452,9 +465,10 @@ impl Recorder {
     }
 }
 
-async fn set_status(db: &SqlitePool, id: i64, status: RecordingStatus) -> Result<()> {
-    sqlx::query("UPDATE recordings SET status = ? WHERE id = ?")
-        .bind(status_str(status))
+/// Marks a recording failed, with why in plain words.
+async fn fail(db: &SqlitePool, id: i64, why: &str) -> Result<()> {
+    sqlx::query("UPDATE recordings SET status = 'failed', failure = ? WHERE id = ?")
+        .bind(why)
         .bind(id)
         .execute(db)
         .await?;

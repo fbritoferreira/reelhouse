@@ -137,6 +137,9 @@ pub fn Recordings() -> Element {
                                 li { key: "{r.id}", class: "rec-row",
                                     span { class: "rec-name quiet", "{name(&r)}" }
                                     span { class: "quiet", "{when(&r)}" }
+                                    if let Some(why) = r.failure.clone() {
+                                        span { class: "quiet rec-why", "{capitalise(&why)}" }
+                                    }
                                 }
                             }
                         }
@@ -145,4 +148,12 @@ pub fn Recordings() -> Element {
             }
         }
     }
+}
+
+/// "Your provider ..." from the server's "your provider ...".
+fn capitalise(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default()
 }

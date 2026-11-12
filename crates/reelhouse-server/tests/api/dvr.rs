@@ -254,3 +254,58 @@ async fn deleting_a_rule_cancels_its_recordings() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert!(recordings(&app, &admin).await.is_empty());
 }
+
+#[tokio::test]
+async fn a_recording_the_provider_refuses_says_why_it_failed() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    if !have_ffmpeg() {
+        return;
+    }
+    let provider = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(407))
+        .mount(&provider)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let t = now();
+    let (m3u, epg) = write_source(
+        dir.path(),
+        &format!("{}/live/u/p/1.ts", provider.uri()),
+        &guide(&[(t - 10, t + 4, "Show", "Pilot")]),
+    );
+    let mut config = Config::for_tests(dir.path().join("data"));
+    config.dvr_tick = Some(Duration::from_millis(200));
+    let app = app_with(config).await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, g) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/livetv/guide?start={t}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    let (status, _) = add_rule(
+        &app,
+        &admin,
+        json!({"kind": "once", "programme_id": g[0]["programmes"][0]["id"], "padding_before_s": 0, "padding_after_s": 0}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let rec = loop {
+        let recs = recordings(&app, &admin).await;
+        if recs.first().is_some_and(|r| r["status"] == "failed") {
+            break recs[0].clone();
+        }
+        assert!(Instant::now() < deadline, "did not fail: {recs:?}");
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    };
+    assert_eq!(
+        rec["failure"],
+        "your provider won't play this channel on your account"
+    );
+}
