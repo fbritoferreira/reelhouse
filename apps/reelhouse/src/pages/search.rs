@@ -121,7 +121,8 @@ pub fn Search() -> Element {
                         for c in chans {
                             li { key: "{c.id}",
                                 Link {
-                                    class: "channel",
+                                    class: if c.refused.is_some() { "channel refused" } else { "channel" },
+                                    title: c.refused.clone(),
                                     to: Route::Watch { id: c.id, group: c.group_title.clone().unwrap_or_default().into() },
                                     span { class: "channel-number", "{c.number.map(|n| n.to_string()).unwrap_or_default()}" }
                                     span { class: "channel-logo",
@@ -131,7 +132,9 @@ pub fn Search() -> Element {
                                     }
                                     span { class: "channel-text",
                                         span { class: "channel-name", "{c.name}" }
-                                        if let Some(g) = c.group_title.clone() {
+                                        if c.refused.is_some() {
+                                            span { class: "channel-now quiet", "Unavailable from your provider" }
+                                        } else if let Some(g) = c.group_title.clone() {
                                             span { class: "channel-now", "{g}" }
                                         }
                                     }
