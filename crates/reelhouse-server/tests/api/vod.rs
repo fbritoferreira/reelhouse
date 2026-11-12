@@ -437,3 +437,49 @@ async fn titles_keep_their_ids_and_progress_when_the_provider_changes_its_urls()
     assert_eq!(eps_after[0]["id"], eps[0]["id"]);
     assert_eq!(eps_after[1]["id"], eps[1]["id"]);
 }
+
+#[tokio::test]
+async fn a_title_left_out_of_one_refresh_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let m3u = playlist(dir.path(), "http://example.invalid/movie/u/p/1.mp4");
+    let app = app().await;
+    let token = admin_token(&app).await;
+    add(&app, &token, &m3u).await;
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    let ronin = films[1]["id"].clone();
+    assert_eq!(films[1]["title"], "Ronin");
+
+    // The provider's next list leaves Ronin out; providers' lists come and go by thousands.
+    let text = std::fs::read_to_string(&m3u).unwrap().replace(
+        "#EXTINF:-1 group-title=\"Crime\",Ronin (1998)\nhttp://example.invalid/movie/u/p/2.mp4\n",
+        "",
+    );
+    std::fs::write(&m3u, text).unwrap();
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&token), None).await;
+    let (status, report) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(report["on_demand"], 3);
+    let (_, films) = call(
+        &app,
+        "GET",
+        "/api/v1/vod/movies?group=Crime",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(films[1]["id"], ronin, "kept, id and all");
+}
