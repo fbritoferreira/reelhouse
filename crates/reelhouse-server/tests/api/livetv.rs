@@ -637,3 +637,33 @@ async fn sources_not_refreshed_lately_are_queued_for_a_refresh() {
         .count();
     assert_eq!(refreshes, 2);
 }
+
+#[tokio::test]
+async fn sources_say_when_they_were_last_refreshed() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    let (_, src) = call(
+        &app,
+        "POST",
+        "/api/v1/livetv/sources",
+        Some(&admin),
+        Some(json!({"name": "New", "kind": "m3u", "url": "http://example.invalid/list.m3u"})),
+    )
+    .await;
+    assert!(src["refreshed_at"].is_null());
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    assert!(sources[0]["refreshed_at"].is_null(), "never refreshed");
+
+    let (m3u, epg) = write_source(dir.path(), "http://example.invalid/news.ts", &guide(&[]));
+    add_m3u(&app, &admin, &m3u, &epg).await;
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    let local = sources
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "Local")
+        .unwrap();
+    let at = local["refreshed_at"].as_i64().expect("refreshed");
+    assert!((now() - at).abs() < 60);
+}
