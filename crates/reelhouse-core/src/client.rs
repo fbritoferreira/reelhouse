@@ -196,6 +196,26 @@ impl Client {
         self.post("/api/v1/livetv/sources", source).await
     }
 
+    /// Points a source's guide at `epg_url`, or back at the playlist's own guide when empty.
+    pub async fn set_tv_source_guide(
+        &self,
+        id: i64,
+        epg_url: &str,
+    ) -> Result<TvSource, ClientError> {
+        #[derive(Serialize)]
+        struct Change<'a> {
+            epg_url: &'a str,
+        }
+        self.send(
+            self.req(
+                reqwest::Method::PATCH,
+                &format!("/api/v1/livetv/sources/{id}"),
+            )
+            .json(&Change { epg_url }),
+        )
+        .await
+    }
+
     /// Queues a refresh; the job's result is the `RefreshReport`.
     pub async fn refresh_tv_source(&self, id: i64) -> Result<Job, ClientError> {
         self.post(&format!("/api/v1/livetv/sources/{id}/refresh"), &())

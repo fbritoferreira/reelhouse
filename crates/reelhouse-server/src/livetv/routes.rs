@@ -47,19 +47,58 @@ impl From<SourceRow> for TvSource {
     }
 }
 
+const SOURCE_SELECT: &str = "SELECT id, name, kind, url, username, epg_url, (SELECT MAX(j.updated_at) FROM jobs j \
+     WHERE j.kind = 'refresh_source' AND j.target_id = tv_sources.id AND j.status = 'done') \
+     AS refreshed_at, (SELECT MAX(p.stop) FROM programmes p JOIN channels c ON c.id = p.channel_id \
+     WHERE c.source_id = tv_sources.id) AS guide_until FROM tv_sources";
+
 pub async fn list_sources(
     State(state): State<AppState>,
     _admin: AdminUser,
 ) -> ApiResult<Json<Vec<TvSource>>> {
-    let rows: Vec<SourceRow> = sqlx::query_as(
-        "SELECT id, name, kind, url, username, epg_url, (SELECT MAX(j.updated_at) FROM jobs j \
-         WHERE j.kind = 'refresh_source' AND j.target_id = tv_sources.id AND j.status = 'done') \
-         AS refreshed_at, (SELECT MAX(p.stop) FROM programmes p JOIN channels c ON c.id = p.channel_id \
-         WHERE c.source_id = tv_sources.id) AS guide_until FROM tv_sources ORDER BY name",
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let rows: Vec<SourceRow> = sqlx::query_as(&format!("{SOURCE_SELECT} ORDER BY name"))
+        .fetch_all(&state.db)
+        .await?;
     Ok(Json(rows.into_iter().map(TvSource::from).collect()))
+}
+
+#[derive(Deserialize)]
+pub struct SourceChanges {
+    name: Option<String>,
+    /// A guide address to use instead of the playlist's or panel's own; empty to go back to it.
+    epg_url: Option<String>,
+}
+
+/// Renames a source or changes where its guide comes from. Fields left out stay as they are.
+pub async fn update_source(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+    Path(id): Path<i64>,
+    Json(changes): Json<SourceChanges>,
+) -> ApiResult<Json<TvSource>> {
+    let name = changes.name.map(|n| n.trim().to_string());
+    if name.as_deref() == Some("") {
+        return Err(ApiError::BadRequest("a source needs a name".into()));
+    }
+    let epg_url = changes.epg_url.map(|u| u.trim().to_string());
+    let updated = sqlx::query(
+        "UPDATE tv_sources SET name = COALESCE(?, name), \
+         epg_url = CASE WHEN ? THEN NULLIF(?, '') ELSE epg_url END WHERE id = ?",
+    )
+    .bind(&name)
+    .bind(epg_url.is_some())
+    .bind(&epg_url)
+    .bind(id)
+    .execute(&state.db)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    let row: SourceRow = sqlx::query_as(&format!("{SOURCE_SELECT} WHERE id = ?"))
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    Ok(Json(row.into()))
 }
 
 pub async fn create_source(
