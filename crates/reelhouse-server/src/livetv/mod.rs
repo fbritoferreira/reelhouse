@@ -161,24 +161,23 @@ pub async fn refresh(db: &SqlitePool, source_id: i64) -> Result<RefreshReport> {
         .bind(seen - UNLISTED_KEPT_MS)
         .execute(&mut *tx)
         .await?;
-    // Replace only the hours the new guide covers: a provider that serves yesterday's guide, or
-    // none, must not wipe what is still to come. Programmes long over go either way.
-    let span = guide
-        .programmes
-        .iter()
-        .map(|p| p.start)
-        .min()
-        .zip(guide.programmes.iter().map(|p| p.stop).max());
-    if let Some((from, to)) = span {
-        sqlx::query(
-            "DELETE FROM programmes WHERE channel_id IN (SELECT id FROM channels WHERE source_id = ?) \
-             AND stop > ? AND start < ?",
-        )
-        .bind(source_id)
-        .bind(from)
-        .bind(to)
-        .execute(&mut *tx)
-        .await?;
+    // Replace, channel by channel, only the hours the new guide covers for that channel. A
+    // provider that serves yesterday's guide, none, or one for a handful of channels must not
+    // wipe what is still to come for the rest. Programmes long over go either way.
+    let mut spans: HashMap<i64, (i64, i64)> = HashMap::new();
+    for p in &guide.programmes {
+        for channel_id in by_epg.get(&p.channel).into_iter().flatten() {
+            let span = spans.entry(*channel_id).or_insert((p.start, p.stop));
+            *span = (span.0.min(p.start), span.1.max(p.stop));
+        }
+    }
+    for (channel_id, (from, to)) in &spans {
+        sqlx::query("DELETE FROM programmes WHERE channel_id = ? AND stop > ? AND start < ?")
+            .bind(channel_id)
+            .bind(from)
+            .bind(to)
+            .execute(&mut *tx)
+            .await?;
     }
     sqlx::query(
         "DELETE FROM programmes WHERE channel_id IN (SELECT id FROM channels WHERE source_id = ?) \

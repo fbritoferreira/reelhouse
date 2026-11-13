@@ -925,3 +925,74 @@ async fn a_channel_left_out_of_one_refresh_is_kept() {
     assert_eq!(listed("Music"), false);
     assert_eq!(listed("News"), true);
 }
+
+#[tokio::test]
+async fn a_guide_for_some_channels_leaves_the_others_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = now() - now() % 3600;
+    let two_channels = |news: &[(&str, i64, i64)], music: &[(&str, i64, i64)]| {
+        let mut xml = String::from(
+            r#"<tv><channel id="news.uk"><display-name>News</display-name></channel><channel id="music.x"><display-name>Music</display-name></channel>"#,
+        );
+        for (id, list) in [("news.uk", news), ("music.x", music)] {
+            for (title, start, stop) in list {
+                xml += &format!(
+                    r#"<programme start="{}" stop="{}" channel="{id}"><title>{title}</title></programme>"#,
+                    xmltv_time(*start),
+                    xmltv_time(*stop)
+                );
+            }
+        }
+        xml + "</tv>"
+    };
+    let (m3u, epg) = write_source(
+        dir.path(),
+        "http://example.invalid/news.ts",
+        &two_channels(
+            &[("Now", t, t + 3600), ("Later", t + 3600, t + 7200)],
+            &[("Song", t, t + 7200)],
+        ),
+    );
+    let app = app().await;
+    let admin = admin_token(&app).await;
+    add_m3u(&app, &admin, &m3u, &epg).await;
+
+    // The provider's next guide covers the same hours, but only for Music.
+    std::fs::write(&epg, two_channels(&[], &[("Jazz", t, t + 7200)])).unwrap();
+    let (_, sources) = call(&app, "GET", "/api/v1/livetv/sources", Some(&admin), None).await;
+    let (status, _) = call(
+        &app,
+        "POST",
+        &format!("/api/v1/livetv/sources/{}/refresh", sources[0]["id"]),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, g) = call(
+        &app,
+        "GET",
+        &format!("/api/v1/livetv/guide?start={}&end={}", t - 86400, t + 86400),
+        Some(&admin),
+        None,
+    )
+    .await;
+    let titles = |name: &str| {
+        g.as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["channel"]["name"] == name)
+            .unwrap()["programmes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["title"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(titles("Music"), ["Jazz"]);
+    assert_eq!(
+        titles("News"),
+        ["Now", "Later"],
+        "News was not in the new guide"
+    );
+}
