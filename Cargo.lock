@@ -4729,11 +4729,11 @@ dependencies = [
 
 [[package]]
 name = "reelhouse"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "reelhouse-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4741,7 +4741,7 @@ dependencies = [
 
 [[package]]
 name = "reelhouse-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dioxus",
  "futures-timer",
@@ -4759,7 +4759,7 @@ dependencies = [
 
 [[package]]
 name = "reelhouse-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "futures",
  "reelhouse-api",
@@ -4773,7 +4773,7 @@ dependencies = [
 
 [[package]]
 name = "reelhouse-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -4803,7 +4803,7 @@ dependencies = [
 
 [[package]]
 name = "reelhouse-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dioxus",
 ]
