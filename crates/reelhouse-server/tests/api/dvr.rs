@@ -309,3 +309,37 @@ async fn a_recording_the_provider_refuses_says_why_it_failed() {
         "your provider won't play this channel on your account"
     );
 }
+
+#[tokio::test]
+async fn record_finds_the_programme_again_after_a_refresh_changed_its_id() {
+    let (app, admin, news, _dir) = setup().await;
+    let pilot = &news["programmes"][0];
+    let other = &news["programmes"][1];
+    let channel = &news["channel"]["id"];
+    // A refresh renumbers programmes: the id the guide on screen holds now belongs to another
+    // programme, or to none. What the viewer chose is the channel and the start time.
+    for stale in [other["id"].clone(), json!(999_999)] {
+        let (status, rule) = add_rule(
+            &app,
+            &admin,
+            json!({"kind": "once", "programme_id": stale, "channel_id": channel, "programme_start": pilot["start"]}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{rule}");
+        let recs = recordings(&app, &admin).await;
+        let rec = recs
+            .iter()
+            .find(|r| r["rule_id"] == rule["id"])
+            .expect("scheduled");
+        assert_eq!(rec["subtitle"], "Pilot");
+        assert_eq!(rec["start"], pilot["start"]);
+    }
+    // Nothing on that channel at that time any more: say so rather than record something else.
+    let (status, _) = add_rule(
+        &app,
+        &admin,
+        json!({"kind": "once", "programme_id": pilot["id"], "channel_id": channel, "programme_start": 12345}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

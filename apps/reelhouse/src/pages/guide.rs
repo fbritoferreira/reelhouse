@@ -91,7 +91,9 @@ pub fn GuideGrid(group: String, time: Signal<Clock>) -> Element {
         let rule = NewRecordingRule {
             kind,
             programme_id: Some(p.id),
-            channel_id: None,
+            // With the start time, these find the programme again if a refresh renumbered it.
+            channel_id: Some(p.channel_id),
+            programme_start: Some(p.start),
             series_title: None,
             padding_before_s: 60,
             padding_after_s: 300,
