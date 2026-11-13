@@ -25,6 +25,37 @@ pub fn clock(unix_s: i64, offset_min: i64) -> String {
     format!("{:02}:{:02}", local / 3600, local / 60 % 60)
 }
 
+/// "Today", "Yesterday", "Tomorrow", or "Tue 10 Nov": the local day `unix_s` falls on, seen from
+/// `now`. `offset_min` as for `clock`.
+pub fn day(now: i64, unix_s: i64, offset_min: i64) -> String {
+    let local_day = |t: i64| (t - offset_min * 60).div_euclid(86_400);
+    let d = local_day(unix_s);
+    match d - local_day(now) {
+        0 => "Today".into(),
+        -1 => "Yesterday".into(),
+        1 => "Tomorrow".into(),
+        _ => {
+            // Days since 1970-01-01, a Thursday, to day and month (Howard Hinnant's civil_from_days).
+            const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+            const MONTHS: [&str; 12] = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ];
+            let z = d + 719_468;
+            let doe = z.rem_euclid(146_097);
+            let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let dom = doy - (153 * mp + 2) / 5 + 1;
+            let month = if mp < 10 { mp + 3 } else { mp - 9 };
+            format!(
+                "{} {dom} {}",
+                DAYS[d.rem_euclid(7) as usize],
+                MONTHS[(month - 1) as usize]
+            )
+        }
+    }
+}
+
 /// "32 min left" or "1h 35m left" until `stop`, never less than a minute.
 pub fn left(now: i64, stop: i64) -> String {
     let minutes = ((stop - now).max(0) + 59) / 60;
@@ -70,6 +101,20 @@ pub fn needs_restart(target: f64, offset: f64, converted: f64) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn day_names_the_local_day() {
+        // 2026-11-13 12:00 UTC, a Friday.
+        let noon = 1_794_571_200;
+        assert_eq!(day(noon, noon - 3600, 0), "Today");
+        assert_eq!(day(noon, noon - 86_400, 0), "Yesterday");
+        assert_eq!(day(noon, noon + 86_400, 0), "Tomorrow");
+        assert_eq!(day(noon, noon - 3 * 86_400, 0), "Tue 10 Nov");
+        assert_eq!(day(noon, noon + 20 * 86_400, 0), "Thu 3 Dec");
+        // 23:30 UTC is already tomorrow at UTC+1 (offset -60).
+        assert_eq!(day(noon, noon + 11 * 3600 + 1800, 0), "Today");
+        assert_eq!(day(noon, noon + 11 * 3600 + 1800, -60), "Tomorrow");
+    }
 
     #[test]
     fn ahead_reads_naturally() {
