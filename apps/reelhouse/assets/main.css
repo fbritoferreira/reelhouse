@@ -807,6 +807,11 @@ button.secondary.current { background: var(--surface-raised); }
 }
 /* Audio and subtitle choices, raised above the controls. */
 .player-end { position: absolute; right: var(--gutter); display: flex; gap: 0.75rem; }
+/* On a phone there is no room beside the play button: the extras take a row of their own. */
+@media (max-width: 760px) {
+  .player-row { flex-wrap: wrap; }
+  .player-end { position: static; flex: 1 0 100%; justify-content: center; }
+}
 .player-tracks { background: rgba(53, 37, 58, 0.72); }
 .player-tracks.current { background: var(--text); color: var(--curtain-deep); }
 .track-picker {
