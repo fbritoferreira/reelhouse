@@ -36,7 +36,15 @@ pub fn Recordings() -> Element {
         None => Vec::new(),
     };
     let off = offset.read().unwrap_or(0);
-    let when = move |r: &Recording| format!("{} to {}", clock(r.start, off), clock(r.stop, off));
+    // The day too, unless it is today: recordings are kept for weeks and scheduled days ahead.
+    let today = crate::live_cache::now_s();
+    let when = move |r: &Recording| {
+        let hours = format!("{} to {}", clock(r.start, off), clock(r.stop, off));
+        match reelhouse_core::timefmt::day(today, r.start, off).as_str() {
+            "Today" => hours,
+            day => format!("{day}, {hours}"),
+        }
+    };
     let now: Vec<_> = list
         .iter()
         .filter(|r| r.status == RecordingStatus::Recording)
