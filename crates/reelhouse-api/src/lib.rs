@@ -374,11 +374,15 @@ pub struct RecordingRule {
 
 /// `once` needs `programme_id`. `series` needs `programme_id` (its channel and series are
 /// used) or `channel_id` plus `series_title`. `keep_last` deletes older recordings of a series.
+/// With a `programme_id`, also send its `channel_id` and `programme_start`: a guide refresh
+/// renumbers programmes, and those two find the one that was on screen.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NewRecordingRule {
     pub kind: RuleKind,
     pub programme_id: Option<i64>,
     pub channel_id: Option<i64>,
+    #[serde(default)]
+    pub programme_start: Option<i64>,
     pub series_title: Option<String>,
     #[serde(default)]
     pub padding_before_s: i64,

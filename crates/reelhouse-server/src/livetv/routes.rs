@@ -496,7 +496,24 @@ pub async fn create_rule(
     if new.keep_last.is_some_and(|k| k < 1) {
         return bad("keep_last must be at least 1");
     }
-    let (channel_id, series_title, series_key) = match (new.programme_id, new.kind) {
+    // The id is only as fresh as the guide the viewer was looking at; the channel and start time
+    // say which programme they meant.
+    let programme_id = match (new.programme_id, new.channel_id, new.programme_start) {
+        (Some(_), Some(channel), Some(start)) => {
+            let found: Option<(i64,)> =
+                sqlx::query_as("SELECT id FROM programmes WHERE channel_id = ? AND start = ?")
+                    .bind(channel)
+                    .bind(start)
+                    .fetch_optional(&state.db)
+                    .await?;
+            match found {
+                Some((id,)) => Some(id),
+                None => return bad("the guide has changed since then; open it again"),
+            }
+        }
+        (id, ..) => id,
+    };
+    let (channel_id, series_title, series_key) = match (programme_id, new.kind) {
         (Some(pid), kind) => {
             let p: Option<(i64, String, Option<String>)> =
                 sqlx::query_as("SELECT channel_id, title, series_key FROM programmes WHERE id = ?")
@@ -537,7 +554,7 @@ pub async fn create_rule(
     .bind(user.id)
     .bind(kind)
     .bind(channel_id)
-    .bind(new.programme_id)
+    .bind(programme_id)
     .bind(&series_title)
     .bind(&series_key)
     .bind(new.padding_before_s)
@@ -554,7 +571,7 @@ pub async fn create_rule(
             id,
             kind: new.kind,
             channel_id,
-            programme_id: new.programme_id,
+            programme_id,
             series_title,
             padding_before_s: new.padding_before_s,
             padding_after_s: new.padding_after_s,
