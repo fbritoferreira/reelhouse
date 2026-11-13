@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.2.0](https://github.com/fbritoferreira/reelhouse/compare/reelhouse-v0.1.0...reelhouse-v0.2.0) (2026-11-13)
+
+
+### Features
+
+* ? lists the web player's keyboard shortcuts ([#91](https://github.com/fbritoferreira/reelhouse/issues/91)) ([8b3be89](https://github.com/fbritoferreira/reelhouse/commit/8b3be89db736e48f86338fa158868a70f5e0ccc4))
+* change a Live TV source's guide address in Manage ([#81](https://github.com/fbritoferreira/reelhouse/issues/81)) ([6370dcc](https://github.com/fbritoferreira/reelhouse/commit/6370dccdf845f3c91f1708ceadb5d654b5dd9097))
+* Continue watching labels the next episode ([#88](https://github.com/fbritoferreira/reelhouse/issues/88)) ([81d1d61](https://github.com/fbritoferreira/reelhouse/commit/81d1d61129c7208b607496a93669bc7ba7768acc))
+* Continue watching offers the next episode ([#86](https://github.com/fbritoferreira/reelhouse/issues/86)) ([6015311](https://github.com/fbritoferreira/reelhouse/commit/601531165ae66be91141caaf6bf1d6e3c318721b))
+* download a whole on-demand series or season ([#76](https://github.com/fbritoferreira/reelhouse/issues/76)) ([67576e6](https://github.com/fbritoferreira/reelhouse/commit/67576e6cf1ac2a0da6f1ff9dbbeb58aa8700c0ab))
+* full screen in the web player ([#46](https://github.com/fbritoferreira/reelhouse/issues/46)) ([69e8856](https://github.com/fbritoferreira/reelhouse/commit/69e885691ac9086ed66950aec1156a1b151a8695))
+* Home's hero falls back to the newest title ([#59](https://github.com/fbritoferreira/reelhouse/issues/59)) ([e59eed3](https://github.com/fbritoferreira/reelhouse/commit/e59eed329b992603fdcdcae94e36cd0140aaf0c6))
+* Manage says how far each source's guide runs ([#74](https://github.com/fbritoferreira/reelhouse/issues/74)) ([c80013d](https://github.com/fbritoferreira/reelhouse/commit/c80013d3b6a3db7f12ea5894ee66a8bc1ccefe49))
+* Manage shows when each Live TV source was last refreshed ([#68](https://github.com/fbritoferreira/reelhouse/issues/68)) ([fd5f828](https://github.com/fbritoferreira/reelhouse/commit/fd5f828c5b4b9984fdba6cbb9a5ca404c42a5207))
+* mark channels the provider no longer lists ([#92](https://github.com/fbritoferreira/reelhouse/issues/92)) ([e64a4bf](https://github.com/fbritoferreira/reelhouse/commit/e64a4bf55de5c5731c742b3a5a390b017fa9330a))
+* media keys on the remote control playback ([#54](https://github.com/fbritoferreira/reelhouse/issues/54)) ([fd3f523](https://github.com/fbritoferreira/reelhouse/commit/fd3f523240ac96769a0156676d8a83f7dfdc27bf))
+* on-demand Continue watching offers the next episode too ([#87](https://github.com/fbritoferreira/reelhouse/issues/87)) ([e374d20](https://github.com/fbritoferreira/reelhouse/commit/e374d20e9d7c48dc5a258d6f4a82ec09f9906ebd))
+* on-demand next episodes are labelled on Home too ([#89](https://github.com/fbritoferreira/reelhouse/issues/89)) ([13b5baa](https://github.com/fbritoferreira/reelhouse/commit/13b5baa084de058a291c213b1af3da4c64c98d1e))
+* progress watched offline reaches the server later ([#71](https://github.com/fbritoferreira/reelhouse/issues/71)) ([4728582](https://github.com/fbritoferreira/reelhouse/commit/47285821778bac523440ac818a92a7e56c930efb))
+* Recently added on Home ([#55](https://github.com/fbritoferreira/reelhouse/issues/55)) ([6180ae5](https://github.com/fbritoferreira/reelhouse/commit/6180ae594a730efa44a8bb06f7d0a22205497b59))
+* Recordings says why a recording didn't record ([#70](https://github.com/fbritoferreira/reelhouse/issues/70)) ([36bbef2](https://github.com/fbritoferreira/reelhouse/commit/36bbef247c024b3e6697b59b1e43de866031a449))
+* Recordings shows which day ([#98](https://github.com/fbritoferreira/reelhouse/issues/98)) ([843b1d6](https://github.com/fbritoferreira/reelhouse/commit/843b1d6f7b1d43130dfd457dff9edac5163d3f83))
+* refresh Live TV sources on their own every 12 hours ([#62](https://github.com/fbritoferreira/reelhouse/issues/62)) ([5247717](https://github.com/fbritoferreira/reelhouse/commit/5247717367ffcb8e0d8b38ee4ec682f54f0d0629))
+* remember channels the provider refuses ([#51](https://github.com/fbritoferreira/reelhouse/issues/51)) ([0b8fde8](https://github.com/fbritoferreira/reelhouse/commit/0b8fde8f53e25a6b7cb78bb68bf611019049b773))
+* the next episode plays by itself when one ends ([#83](https://github.com/fbritoferreira/reelhouse/issues/83)) ([e0e3150](https://github.com/fbritoferreira/reelhouse/commit/e0e3150bd1b9d3d91013729c8200bb3ad20c2c67))
+* the server logs each job's outcome ([#72](https://github.com/fbritoferreira/reelhouse/issues/72)) ([8807637](https://github.com/fbritoferreira/reelhouse/commit/8807637fb18050938595a3671d2e72cd26cf2f8e))
+* the web player remembers volume and mute ([#60](https://github.com/fbritoferreira/reelhouse/issues/60)) ([1e9451f](https://github.com/fbritoferreira/reelhouse/commit/1e9451f6788c01c33a8c99e376818dcd371bdbc8))
+* the web player shows in the system's media controls ([#94](https://github.com/fbritoferreira/reelhouse/issues/94)) ([e1d7b6c](https://github.com/fbritoferreira/reelhouse/commit/e1d7b6c0c3e3d74bcaa0208fd52d6a2cdd1b92e1))
+* YouTube keyboard shortcuts in the web player ([#48](https://github.com/fbritoferreira/reelhouse/issues/48)) ([5b88d6a](https://github.com/fbritoferreira/reelhouse/commit/5b88d6a388e63ea64297be2f4173fba11c2d3738))
+
+
+### Bug Fixes
+
+* a refresh with a stale or empty guide keeps what is still to come ([#73](https://github.com/fbritoferreira/reelhouse/issues/73)) ([08f408c](https://github.com/fbritoferreira/reelhouse/commit/08f408c4a296ef9760b68af8cc95582f0df88d8b))
+* a thin guide no longer wipes the full one ([#95](https://github.com/fbritoferreira/reelhouse/issues/95)) ([3beca76](https://github.com/fbritoferreira/reelhouse/commit/3beca76433f5218269d4f16445bb2ee3e89346c4))
+* channels and on-demand titles keep their ids when provider URLs change ([#79](https://github.com/fbritoferreira/reelhouse/issues/79)) ([ee37d56](https://github.com/fbritoferreira/reelhouse/commit/ee37d56cd2fe163851d8684007c37731ba050475))
+* job errors in Activity no longer show provider URLs ([#82](https://github.com/fbritoferreira/reelhouse/issues/82)) ([8c4220f](https://github.com/fbritoferreira/reelhouse/commit/8c4220f54e50192244a31e02008a20d5ef5099a8))
+* keep channels a week after the provider stops listing them ([#90](https://github.com/fbritoferreira/reelhouse/issues/90)) ([713ce92](https://github.com/fbritoferreira/reelhouse/commit/713ce922f3b081bca096b6fcf2a326036b03e82a))
+* keep on-demand titles a week after the provider stops listing them ([#80](https://github.com/fbritoferreira/reelhouse/issues/80)) ([15c0de9](https://github.com/fbritoferreira/reelhouse/commit/15c0de90af61c6be33eb3d43d3213d9d99854ee4))
+* library playback waits for its playlist, or says why it failed ([#84](https://github.com/fbritoferreira/reelhouse/issues/84)) ([fa6f059](https://github.com/fbritoferreira/reelhouse/commit/fa6f059324b885c6bcfe67c105b07665dbf960b1))
+* Live TV doesn't blame the provider for a missing guide ([#78](https://github.com/fbritoferreira/reelhouse/issues/78)) ([335d93f](https://github.com/fbritoferreira/reelhouse/commit/335d93f286c1a5530907bbbd9a112a91f0fde274))
+* Live TV groups with & # or + in their names ([#50](https://github.com/fbritoferreira/reelhouse/issues/50)) ([b70dd39](https://github.com/fbritoferreira/reelhouse/commit/b70dd3921edc15cd3a4e9a5987bb1c437ce9ec3e))
+* Manage's source list updates after Refresh ([#69](https://github.com/fbritoferreira/reelhouse/issues/69)) ([72cbac2](https://github.com/fbritoferreira/reelhouse/commit/72cbac2409ce2df1d62b80d3368cc418cc448f2e))
+* plain reasons for on-demand titles that won't play, without the provider URL ([#57](https://github.com/fbritoferreira/reelhouse/issues/57)) ([9b1932c](https://github.com/fbritoferreira/reelhouse/commit/9b1932c8915d0f8374a944d5ead60cc92105de22))
+* player buttons no longer overlap on a phone ([#97](https://github.com/fbritoferreira/reelhouse/issues/97)) ([e76f455](https://github.com/fbritoferreira/reelhouse/commit/e76f4557b7c0b6a4b413c3dd5d9b3502d8406a16))
+* Recent channels lists only channels that played ([#56](https://github.com/fbritoferreira/reelhouse/issues/56)) ([0f26682](https://github.com/fbritoferreira/reelhouse/commit/0f2668279542755fe7cc83b6569eee918fe0ec37))
+* Record finds the right programme after a guide refresh ([#96](https://github.com/fbritoferreira/reelhouse/issues/96)) ([64eac2f](https://github.com/fbritoferreira/reelhouse/commit/64eac2f91b109c7991b11e47899b3d6ef90c2a28))
+* say why a provider refuses a live channel ([#49](https://github.com/fbritoferreira/reelhouse/issues/49)) ([af39b73](https://github.com/fbritoferreira/reelhouse/commit/af39b73f775efd6f20b1d1be325f9e917f228bd6))
+* search marks channels the provider refuses ([#77](https://github.com/fbritoferreira/reelhouse/issues/77)) ([ec9de45](https://github.com/fbritoferreira/reelhouse/commit/ec9de4546139acc91e70df9ce3729ac929bd5646))
+* show a channel as unavailable straight after it is refused ([#52](https://github.com/fbritoferreira/reelhouse/issues/52)) ([14c0b43](https://github.com/fbritoferreira/reelhouse/commit/14c0b43d04a5b14fcb96e33eb8569191d2ea94e8))
+* the Live TV panel says when a channel is unavailable ([#53](https://github.com/fbritoferreira/reelhouse/issues/53)) ([b7785ac](https://github.com/fbritoferreira/reelhouse/commit/b7785ac1db2734bd4c2e4c3f4ca33af5b3072e1d))
+* the TV remote's media keys reach Reelhouse ([#93](https://github.com/fbritoferreira/reelhouse/issues/93)) ([5139420](https://github.com/fbritoferreira/reelhouse/commit/51394202b42bfc3d97fc9276e63a87887808b0e7))
+* tidy on-demand film names from providers ([#61](https://github.com/fbritoferreira/reelhouse/issues/61)) ([b54f588](https://github.com/fbritoferreira/reelhouse/commit/b54f5884263757bf0132f5494428b4880c78b450))
+* Up next opens the next episode, not the same one again ([#85](https://github.com/fbritoferreira/reelhouse/issues/85)) ([babf958](https://github.com/fbritoferreira/reelhouse/commit/babf95893f32e25dd2e1477c2db76490a304ba48))
+
 ## [0.1.0](https://github.com/fbritoferreira/reelhouse/compare/reelhouse-v0.0.1...reelhouse-v0.1.0) (2026-11-10)
 
 
